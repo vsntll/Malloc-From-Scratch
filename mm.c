@@ -66,14 +66,63 @@ static uint64_t* prologue; // prologue
 static uint64_t* epilogue; // epilogue
 static uint64_t* noFreeBlock; //list of free blocks
 
-void set_header(uint64_t* current_block_ptr, size_t size, int prev_alloc, int alloc) {
-    *current_block_ptr = (uint64_t)(size + (2 * prev_alloc) + alloc);
+struct block_meta {
+    size_t size; 
+    int is_free; 
+    struct block_meta *next;
+};
+
+struct block_meta *free_list = NULL;
+
+struct block_meta *find_free_block(size_t size) {
+   struct block_meta *current = free_list;
+   while (current) {
+       if (current->is_free && current->size >= size) {
+           return current;
+       }
+       current = current->next;
+   }
+   return NULL;
 }
 
-void set_footer(uint64_t* current_block_ptr, size_t size) {
-    uint64_t* newfooter_ptr = current_block_ptr + (size_of_block(current_block_ptr)/8) - 1;
-    *newfooter_ptr = (uint64_t)(size);
+void *extend_heap(size_t size) {
+   void *block = mem_sbrk(size + sizeof(struct block_meta));
+   if (block == (void *)-1) {
+       return NULL;
+   }
+
+   struct block_meta *meta = (struct block_meta *)block;
+   meta->size = size;
+   meta->is_free = 0;
+   meta->next = NULL;
+
+   return meta;
 }
+
+void mark_as_allocated(struct block_meta *block, size_t size) {
+   block->is_free = 0;
+   block->size = size;
+}
+
+void split_block(struct block_meta *block, size_t size) {
+   struct block_meta *new_block = (struct block_meta *)((char *)block + size + sizeof(struct block_meta));
+   new_block->size = block->size - size - sizeof(struct block_meta);
+   new_block->is_free = 1;
+   new_block->next = block->next;
+
+   block->size = size;
+   block->next = new_block;
+}
+
+void set_header(word_t* block, size_t size, int prev_alloc, int alloc) {
+    *block = (size) | (prev_alloc << 1) | alloc;
+}
+
+void set_footer(word_t* block, size_t size, int prev_alloc, int alloc) {
+    word_t* footer = block + (size / WSIZE) - 1;
+    *footer = (size) | (prev_alloc << 1) | alloc;
+}
+
 
 /*
  * mm_init: returns false on error, true on success.
@@ -81,19 +130,21 @@ void set_footer(uint64_t* current_block_ptr, size_t size) {
 bool mm_init(void)
 {
     // IMPLEMENT THIS
-    size_t initial = CHUNKSIZE;
-    word_t* prologue = (word_t*)mm_sbrk(initial);
-    if (prologue == (void*)-1) {
+    size_t initial = align(CHUNKSIZE);
+    word_t* start = (word_t*)mm_sbrk(initial);
+    if (start == (void*)-1) {
         return false;
     }
 
+    prologue = start;
     set_header(prologue, DSIZE, 1, 1);
     set_footer(prologue, DSIZE, 1, 1);
     
-    word_t* epilogue = (word_t*)((char*)prologue + initial - WSIZE);
+    epilogue = (word_t*)((char*)start + initial - WSIZE);
     set_header(epilogue, 0, 1, 1);
 
-    noFreeBlock = NULL; //empty initially
+    noFreeBlock = NULL; //initialize free list
+
     if (prologue == (word_t)mm_heap_lo()&& initial == mm_heapsize()){
         return true;
     }
@@ -107,8 +158,27 @@ bool mm_init(void)
  */
 void* malloc(size_t size)
 {
-    // IMPLEMENT THIS
-    return NULL;
+    if (size == 0) {
+        return NULL;
+    }
+    size_t aligned = align(size);
+    struct block_meta *block = find_free_block(aligned);
+    if (block) {
+        if (block->size > aligned + sizeof(struct block_meta)) {
+            split_block(block, aligned);
+        }
+        mark_as_allocated(block, aligned);
+        return (void *)(block + 1); // Return the payload, not the metadata
+    }
+
+    // No suitable block found, extend the heap
+    block = (struct block_meta *)extend_heap(aligned);
+    if (!block) {
+        return NULL; // Heap extension failed
+    }
+
+    mark_as_allocated(block, aligned);
+    return (void *)(block + 1);
 }
 
 /*
