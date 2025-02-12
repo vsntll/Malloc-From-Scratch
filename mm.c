@@ -66,54 +66,6 @@ static uint64_t* prologue; // prologue
 static uint64_t* epilogue; // epilogue
 static uint64_t* noFreeBlock; //list of free blocks
 
-struct block_meta {
-    size_t size; 
-    int is_free; 
-    struct block_meta *next;
-};
-
-struct block_meta *free_list = NULL;
-
-struct block_meta *find_free_block(size_t size) {
-   struct block_meta *current = free_list;
-   while (current) {
-       if (current->is_free && current->size >= size) {
-           return current;
-       }
-       current = current->next;
-   }
-   return NULL;
-}
-
-void *extend_heap(size_t size) {
-   void *block = mem_sbrk(size + sizeof(struct block_meta));
-   if (block == (void *)-1) {
-       return NULL;
-   }
-
-   struct block_meta *meta = (struct block_meta *)block;
-   meta->size = size;
-   meta->is_free = 0;
-   meta->next = NULL;
-
-   return meta;
-}
-
-void mark_as_allocated(struct block_meta *block, size_t size) {
-   block->is_free = 0;
-   block->size = size;
-}
-
-void split_block(struct block_meta *block, size_t size) {
-   struct block_meta *new_block = (struct block_meta *)((char *)block + size + sizeof(struct block_meta));
-   new_block->size = block->size - size - sizeof(struct block_meta);
-   new_block->is_free = 1;
-   new_block->next = block->next;
-
-   block->size = size;
-   block->next = new_block;
-}
-
 void set_header(word_t* block, size_t size, int prev_alloc, int alloc) {
     *block = (size) | (prev_alloc << 1) | alloc;
 }
@@ -123,6 +75,26 @@ void set_footer(word_t* block, size_t size, int prev_alloc, int alloc) {
     *footer = (size) | (prev_alloc << 1) | alloc;
 }
 
+int getBit(uint64_t num, int index){
+    return (num & (1ULL << index)) != 0;
+}
+
+
+// returning T/F based on whether or not it is a header or a footer
+int is_header(uint64_t num, uint64_t* ptr, int i_offset){
+    uint64_t potBlock = num >> 1;
+    int potBlockStat = getBit(num, 63);
+    uint64_t offset = potBlock/8;
+    if (inheap(ptr + i_offset + offset + 1)== false){
+        return 0;
+    }
+    //
+    uint64_t futureBlock = ptr[i_offset + offset + 1];
+    if (potBlock == (futureBlock >> 1) && potBlockStat == getBit(futureBlock, 63)){
+        return 1;
+    }
+        return 0;
+}
 
 /*
  * mm_init: returns false on error, true on success.
@@ -162,23 +134,26 @@ void* malloc(size_t size)
         return NULL;
     }
     size_t aligned = align(size);
-    struct block_meta *block = find_free_block(aligned);
-    if (block) {
-        if (block->size > aligned + sizeof(struct block_meta)) {
-            split_block(block, aligned);
+    uint64_t* ptr = mm_heap_lo() + 3;
+    int i = 0;
+    while(ptr < mm_heap_hi()){
+        if ((is_header(ptr[1], ptr, i) == 1) && (getBit(ptr[i], 63) == 0)){
+            uint64_t blockSize = ptr[i] >> 1;
+            if (blockSize -16 == aligned){
+                ptr[i] = ptr[i] | 1;
+                ptr[i + aligned/8 + 1] = ptr[i];
+                return ptr + i + 1;
+            }
+            else if (blockSize - 16 > aligned){
+                ptr[i] = aligned << 1 | 1;
+                ptr[i + aligned/8 + 1] = ptr[i];
+                ptr[i + aligned/8 + 2] = (blockSize - aligned) << 1 | 0;
+                ptr[i + aligned/8 + 1] = blockSize - aligned << 1 | 0;
+                return ptr + i + 1;
+            }
         }
-        mark_as_allocated(block, aligned);
-        return (void *)(block + 1); // Return the payload, not the metadata
     }
-
-    // No suitable block found, extend the heap
-    block = (struct block_meta *)extend_heap(aligned);
-    if (!block) {
-        return NULL; // Heap extension failed
-    }
-
-    mark_as_allocated(block, aligned);
-    return (void *)(block + 1);
+    
 }
 
 /*
@@ -187,8 +162,9 @@ void* malloc(size_t size)
 void free(void* ptr)
 {
     // IMPLEMENT THIS
-    return;
-}
+    if (!ptr) {
+        return;
+    }
 
 /*
  * realloc
