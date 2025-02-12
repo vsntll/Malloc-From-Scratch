@@ -55,12 +55,24 @@ static size_t align(size_t x)
     return ALIGNMENT * ((x+ALIGNMENT-1)/ALIGNMENT);
 }
 
+typedef uint64_t word_t;
+
+static const size_t WSIZE = sizeof(word_t); // word and header/footer size
+static const size_t DSIZE = 2*WSIZE; // doubleword size
+static const size_t min_block_size = DSIZE; // min block size
+static const size_t CHUNKSIZE = (1<<12); // extend heap by this amount
+
+
+
 /*
  * mm_init: returns false on error, true on success.
  */
 bool mm_init(void)
 {
     // IMPLEMENT THIS
+    
+
+    
     return true;
 }
 
