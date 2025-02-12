@@ -62,7 +62,18 @@ static const size_t DSIZE = 2*WSIZE; // doubleword size
 static const size_t min_block_size = DSIZE; // min block size
 static const size_t CHUNKSIZE = (1<<12); // extend heap by this amount
 
+static uint64_t* prologue; // prologue
+static uint64_t* epilogue; // epilogue
+static uint64_t* noFreeBlock; //list of free blocks
 
+void set_header(uint64_t* current_block_ptr, size_t size, int prev_alloc, int alloc) {
+    *current_block_ptr = (uint64_t)(size + (2 * prev_alloc) + alloc);
+}
+
+void set_footer(uint64_t* current_block_ptr, size_t size) {
+    uint64_t* newfooter_ptr = current_block_ptr + (size_of_block(current_block_ptr)/8) - 1;
+    *newfooter_ptr = (uint64_t)(size);
+}
 
 /*
  * mm_init: returns false on error, true on success.
@@ -70,10 +81,25 @@ static const size_t CHUNKSIZE = (1<<12); // extend heap by this amount
 bool mm_init(void)
 {
     // IMPLEMENT THIS
-    
+    size_t initial = CHUNKSIZE;
+    word_t* prologue = (word_t*)mm_sbrk(initial);
+    if (prologue == (void*)-1) {
+        return false;
+    }
 
+    set_header(prologue, DSIZE, 1, 1);
+    set_footer(prologue, DSIZE, 1, 1);
     
-    return true;
+    word_t* epilogue = (word_t*)((char*)prologue + initial - WSIZE);
+    set_header(epilogue, 0, 1, 1);
+
+    noFreeBlock = NULL; //empty initially
+    if (prologue == (word_t)mm_heap_lo()&& initial == mm_heapsize()){
+        return true;
+    }
+    else {
+        return false;
+    }
 }
 
 /*
