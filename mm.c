@@ -139,12 +139,12 @@ void* malloc(size_t size)
     while(ptr < mm_heap_hi()){
         if ((is_header(ptr[1], ptr, i) == 1) && (getBit(ptr[i], 63) == 0)){
             uint64_t blockSize = ptr[i] >> 1;
-            if (blockSize -16 == aligned){
+            if (blockSize == aligned){
                 ptr[i] = ptr[i] | 1;
                 ptr[i + aligned/8 + 1] = ptr[i];
                 return ptr + i + 1;
             }
-            else if (blockSize - 16 > aligned){
+            else if (blockSize > aligned){
                 ptr[i] = aligned << 1 | 1;
                 ptr[i + aligned/8 + 1] = ptr[i];
                 ptr[i + aligned/8 + 2] = (blockSize - aligned) << 1 | 0;
