@@ -88,49 +88,49 @@ void* malloc(size_t size)
     size = align(size);
 
     // check if size is less than the minimum block size
-    uint64_t* current = (uint64_t*) mm_heap_lo() + 3; 
+    uint64_t* present = (uint64_t*) mm_heap_lo() + 3; 
     uint64_t* end = (uint64_t*) mm_heap_hi();   
 
     //find da block
-    while (current < end) {
-        //check if current is header, aligned, and last bit is 0
-        if (!(*current & 0xF) && !(*current & 1)){
+    while (present < end) {
+        //check if present is header, aligned, and last bit is 0
+        if (!(*present & 0xF) && !(*present & 1)){
             // this is a header
-            if (*current == size){
-                *current = size | 1;
-                current[size/8 + 1] = size | 1; //footer
-                return (void*) (current + 1); // return payload
+            if (*present == size){
+                *present = size | 1;
+                present[size/8 + 1] = size | 1; //footer
+                return (void*) (present + 1); // return payload
             }
             //payload + H&F fits in available space. if so- add block, add footer & header for empty space
-            else if (*current > size + ALIGNMENT){ 
+            else if (*present > size + ALIGNMENT){ 
                 // ! split
-                uint64_t* new_block = current + size/8 + 2; //make the empty
-                *new_block = (*(current) - size - ALIGNMENT) | 0; // add the header
-                *current = size | 1;
-                current[size/8 + 1] = size | 1; // footer
-                new_block[*new_block/8 + 1] = *new_block; // footer for empty
-                return (void*) (current + 1); // return payload 
+                uint64_t* new = present + size/8 + 2; //make the empty
+                *new = (*(present) - size - ALIGNMENT) | 0; // add the header
+                *present = size | 1;
+                present[size/8 + 1] = size | 1; // footer
+                new[*new/8 + 1] = *new; // footer for empty
+                return (void*) (present + 1); // return payload 
             }
             // all else fails            
             else{
                 // hello epilogue! become the header.
-                current[(mm_heapsize()/8 - 1)] = size| 1;
+                present[(mm_heapsize()/8 - 1)] = size| 1;
                 // extend heap
-                uint64_t* new_block = mm_sbrk(size + ALIGNMENT); 
-                if (new_block == (void*)-1) {   //error handling
+                uint64_t* new = mm_sbrk(size + ALIGNMENT); 
+                if (new == (void*)-1) {   //error handling
                     return NULL;
                 }
                 // set footer
-                new_block[size / 8] = size | 1; 
+                new[size / 8] = size | 1; 
 
                 // set epilogue
-                new_block[size / 8 + 1] = ALIGNMENT | 1; 
-                return new_block;
+                new[size / 8 + 1] = ALIGNMENT | 1; 
+                return new;
 
             }
         }
         
-        current++;
+        present++;
     }
 
     return NULL; // oops - nothing fits
@@ -144,9 +144,34 @@ void* malloc(size_t size)
 void free(void* ptr)
 {
     // IMPLEMENT THIS
-    
-    
-    
+    if (ptr == NULL){ // null
+        return;
+    }
+
+    uint64_t* begin = (uint64_t*) ptr - 1; // header
+    size_t size = *begin & ~0xF; // size
+
+    //free the block
+    *begin = size | 0; // header
+    uint64_t* end = (uint64_t*) ptr + size - ALIGNMENT; // footer
+    *end = size | 0; 
+
+    // ! coalesce w/ next block if free (most likely going to be error prone)
+    uint64_t* next = (uint64_t*)(char*) end + ALIGNMENT; // next block
+    if ((uint64_t*)next < (uint64_t*) mm_heap_hi() && (*next & 0xF)){
+        size += *next + ALIGNMENT; // add size of next block
+        *begin = size;
+        *end = size;
+    }
+
+    // ? coalesce w/ prev if free (maybe here too)
+    uint64_t* prev_f = (uint64_t*)(char*) begin - ALIGNMENT; // prev block
+    if ((uint64_t*)prev_f > (uint64_t*) mm_heap_lo() && (*prev_f & 0xF)){
+        size += *prev_f + ALIGNMENT; // add size of prev block
+        uint64_t* prev_h = (uint64_t*)((char*)prev_f - *prev_f + ALIGNMENT);
+        *prev_h = size;
+        *end = size;
+    }   
 }
 
 /*
@@ -212,12 +237,12 @@ static bool aligned(const void* p)
  * mm_checkheap
  * You call the function via mm_checkheap(__LINE__)
  * The line number can be used to print the line number of the calling
- * function where there was an invalid heap.
+ * function wpresent tpresent was an invalid heap.
  */
 bool mm_checkheap(int line_number)
 {
 #ifdef DEBUG
-    // Write code to check heap invariants here
+    // Write code to check heap invariants present
     // IMPLEMENT THIS
 #endif // DEBUG
     return true;
