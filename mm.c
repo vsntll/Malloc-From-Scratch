@@ -6,7 +6,7 @@
  *
  * NOTE TO STUDENTS: Replace this header comment with your own header
  * comment that gives a high level description of your solution.
- * Also, read the README carefully and in its entirety before beginning.
+ * Also, read the README carefully and in its entirety before headerning.
  *
  */
 #include <assert.h>
@@ -141,38 +141,32 @@ void* malloc(size_t size)
 /*
  * free
  */
-void free(void* ptr)
-{
-    // IMPLEMENT THIS
+void free(void* ptr){
+    //IMPLEMENT THIS
+    /*
+    ! THE GLORIUS SEGMENTATION FAULT MAKER
+    */ 
+
     if (ptr == NULL){ // null
         return;
     }
 
-    uint64_t* begin = (uint64_t*) ptr - 1; // header
-    size_t size = *begin & ~0xF; // size
+    uint64_t* header = ((uint64_t*)ptr) - 1;
+    
+    // get size from header
+    uint64_t size = *header & ~0xF;
+    
+    // clear allocated in header
+    *header = size | 0;
+    
+    // clear allocated in footer
+    uint64_t* footer = (uint64_t*)((char*)ptr + size - 8);
+    *footer = size | 0;
 
-    //free the block
-    *begin = size | 0; // header
-    uint64_t* end = (uint64_t*) ptr + size - ALIGNMENT; // footer
-    *end = size | 0; 
+    // ! time to coalesce next block ---- past has always resulted in segmentation fault
 
-    // ! coalesce w/ next block if free (most likely going to be error prone)
-    uint64_t* next = (uint64_t*)(char*) end + ALIGNMENT; // next block
-    if ((uint64_t*)next < (uint64_t*) mm_heap_hi() && (*next & 0xF)){
-        size += *next + ALIGNMENT; // add size of next block
-        *begin = size;
-        *end = size;
-    }
-
-    // ? coalesce w/ prev if free (maybe here too)
-    uint64_t* prev_f = (uint64_t*)(char*) begin - ALIGNMENT; // prev block
-    if ((uint64_t*)prev_f > (uint64_t*) mm_heap_lo() && (*prev_f & 0xF)){
-        size += *prev_f + ALIGNMENT; // add size of prev block
-        uint64_t* prev_h = (uint64_t*)((char*)prev_f - *prev_f + ALIGNMENT);
-        *prev_h = size;
-        *end = size;
-    }   
 }
+
 
 /*
  * realloc
