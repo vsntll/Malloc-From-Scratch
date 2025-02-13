@@ -60,7 +60,7 @@ typedef uint64_t word_t;
 
 static const size_t WSIZE = sizeof(word_t); // word and header/footer size
 static const size_t DSIZE = 2*WSIZE; // doubleword size
-static const size_t min_block_size = DSIZE; // min block size
+//static const size_t min_block_size = DSIZE; // min block size
 static const size_t CHUNKSIZE = (1<<12); // extend heap by this amount
 
 static uint64_t* prologue; // prologue
@@ -267,6 +267,33 @@ void free(void* ptr)
     if (!ptr) {
         return;
     }
+
+    struct block_meta *block = (struct block_meta *)ptr - 1; // get the block header
+    block->is_free = 1; // mark the block as free
+    struct block_meta *next_block = (struct block_meta *)((char *)block + block-> size);
+    if (next_block-> is_free){
+        block-> size += next_block-> size; // merge with next block
+        block->next = next_block->next; // link to the next block
+    }
+
+    // ! Coalesce!!!!!!!!!!!!!
+
+    struct block_meta *prev_block = free_list;
+
+    while(prev_block && prev_block != block){
+        prev_block = prev_block->next;
+    }
+
+    // check if the previous block is free  
+    if(prev_block && prev_block -> is_free){
+        prev_block -> size += block -> size; // merge with previous block
+        prev_block -> next = block-> next; // link to the next block
+    }
+    else{
+        block-> next = free_list;
+        free_list = block; 
+    }
+    
     
 }
 
