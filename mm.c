@@ -56,113 +56,12 @@ static size_t align(size_t x)
     return ALIGNMENT * ((x+ALIGNMENT-1)/ALIGNMENT);
 }
 
-typedef uint64_t word_t;
-
-static const size_t WSIZE = 8; // word and header/footer size
-// static const size_t DSIZE = 8; // doubleword size
-// static const size_t min_block_size = DSIZE; // min block size
-// static const size_t CHUNKSIZE = (1<<12); // extend heap by this amount
-
-// static uint64_t* prologue; // prologue
-// static uint64_t* epilogue; // epilogue
-// static uint64_t* noFreeBlock; //list of free blocks
-
-struct block_meta {
-    size_t size;
-    int is_free;
-    struct block_meta *next;
-};
-
-struct block_meta *free_list = NULL;
-
-
-//helper to split block
-void split_block(struct block_meta *block, size_t size){
-    // check if the block is large enough to split
-    struct block_meta *new_block = (struct block_meta *)((char *)block + size + sizeof(struct block_meta));
-    new_block->size = block->size - size - sizeof(struct block_meta);   // update the size of the new block
-    new_block->is_free = 1;                     // mark the new block as free
-    new_block->next = block->next;              // link the new block to the next block
-
-    block->size = size;     // update the size of the current block
-    block->next = new_block;        // link the current block to the new block
-}
-
-//helper to allocate
-void mark_as_allocated(struct block_meta *block, size_t size){
-    block->is_free = 0;     // mark not free (allocated)
-    block->size = size;   // update the size of the block
-}
-
-//helper to extend heap
-void *extend_heap(size_t size){
-    void *block = mem_sbrk(size + sizeof(struct block_meta));       // extend the heap
-    if (block == (void *)-1)        //error check
-    {
-        return NULL;
-    }
-
-    struct block_meta *meta = (struct block_meta *)block;          // create a new block
-    meta->size = size;
-    meta->is_free = 0;
-    meta->next = NULL;
-
-    return meta;
-}
-
-int getBit(uint64_t num, int index){
-    return (num & (1ULL << index)) != 0;
-}
-
-
-// returning T/F based on whether or not it is a header or a footer
-//? scrap? scrap.
-int is_header(uint64_t num, uint64_t* ptr, int i_offset){
-    uint64_t potBlock = num >> 1;
-    int potBlockStat = getBit(num, 63);
-    uint64_t offset = potBlock/8;
-    if ((char*)(ptr + i_offset + offset + 1) >= (char*)mm_heap_hi()){
-        return 0;
-    }
-    //
-    uint64_t futureBlock = ptr[i_offset + offset + 1];
-    if (potBlock == (futureBlock >> 1) && potBlockStat == getBit(futureBlock, 63)){
-        return 1;
-    }
-        return 0;
-}
-
 /*
  * mm_init: returns false on error, true on success.
  */
 bool mm_init(void)
 {
     // IMPLEMENT THIS
-    // size_t initial = align(CHUNKSIZE);
-    // word_t *start = (word_t *)mem_sbrk(initial);
-    // //error check
-    // if (start == (void *)-1){
-    //     return false;
-    // }
-
-    // // set the initial size of the heap
-    // prologue = start;
-    // set_header(prologue, DSIZE, 1, 1);
-    // set_footer(prologue, DSIZE, 1, 1);
-
-    // // set the first block header
-    // epilogue = (word_t *)((char *)start + initial - WSIZE);
-    // set_header(epilogue, 0, 1, 1);
-
-    // noFreeBlock = NULL; // initialize free list
-
-    // // set the prologue and epilogue pointers
-    // if (prologue == (word_t *)mem_heap_lo() && initial == mem_heapsize()){
-    //     return true;
-    // }
-    // else{
-    //     return false;
-    // }
     uint64_t* start = mm_sbrk(align(32));
     if (start == (void *)-1) {
         return false;
@@ -245,35 +144,7 @@ void* malloc(size_t size)
 void free(void* ptr)
 {
     // IMPLEMENT THIS
-    // if (!ptr) {
-    //     return;
-    // }
-
-    // struct block_meta *block = (struct block_meta *)ptr - 1; // get the block header
-    // block->is_free = 1; // mark the block as free
-    // struct block_meta *next_block = (struct block_meta *)((char *)block + block-> size);
-    // if (next_block-> is_free){
-    //     block-> size += next_block-> size; // merge with next block
-    //     block->next = next_block->next; // link to the next block
-    // }
-
-    // // ! Coalesce!!!!!!!!!!!!!
-
-    // struct block_meta *prev_block = free_list;
-
-    // while(prev_block && prev_block != block){
-    //     prev_block = prev_block->next;
-    // }
-
-    // // check if the previous block is free  
-    // if(prev_block && prev_block -> is_free){
-    //     prev_block -> size += block -> size; // merge with previous block
-    //     prev_block -> next = block-> next; // link to the next block
-    // }
-    // else{
-    //     block-> next = free_list;
-    //     free_list = block; 
-    // }
+    
     
     
 }
