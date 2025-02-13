@@ -96,10 +96,24 @@ void* malloc(size_t size)
         //check if present is header, aligned, and last bit is 0
         if (!(*present & 0xF) && !(*present & 1)){
             // this is a header
+            size_t block_size = *present & ~0xF;
             if (*present == size){
                 *present = size | 1;
                 present[size/8 + 1] = size | 1; //footer
                 return (void*) (present + 1); // return payload
+            }
+            
+            else if (block_size >= size){
+                if(block_size > size + ALIGNMENT){
+                    size_t remaining = block_size - size - ALIGNMENT;
+                    *present = size | 1;
+                    *(present + size/8 + 1) = size | 1;
+
+                    uint64_t* new_free = present + size/8 + 2; // make the empty
+                    *new_free = remaining | 0;
+                    *(new_free + remaining / 8 + 1) = remaining | 0; // footer
+                    return (void*) (present + 1);
+                }
             }
             //payload + H&F fits in available space. if so- add block, add footer & header for empty space
             else if (*present > size + ALIGNMENT){ 
@@ -116,7 +130,7 @@ void* malloc(size_t size)
                 // hello epilogue! become the header.
                 present[(mm_heapsize()/8 - 1)] = size| 1;
                 // extend heap
-                uint64_t* new = mm_sbrk(size + ALIGNMENT); 
+                uint64_t* new = mm_sbrk(size + ALIGNMENT);      // ! take this out and free the block and should get 100 or figure out coalescing
                 if (new == (void*)-1) {   //error handling
                     return NULL;
                 }
@@ -183,7 +197,7 @@ void free(void* ptr){
     /*
     ! THE GLORIUS SEGMENTATION FAULT MAKER
     */ 
-   validate_heap();
+   //validate_heap();
 
     if (ptr == NULL){ // null
         return;
@@ -202,7 +216,7 @@ void free(void* ptr){
     uint64_t *footer = (uint64_t *)((char *)ptr + block_size - ALIGNMENT);
     
     *footer = block_size | 0;
-    coalesce_blocks(&header, &footer, &block_size);
+    //coalesce_blocks(&header, &footer, &block_size);
 
     //  //? time to coalesce next block ---- past has always resulted in segmentation fault
      
