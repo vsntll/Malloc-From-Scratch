@@ -138,6 +138,7 @@ void* malloc(size_t size)
 
 }
 
+
 /*
  * free
  */
@@ -151,19 +152,38 @@ void free(void* ptr){
         return;
     }
 
-    uint64_t* header = ((uint64_t*)ptr) - 1;
-    
-    // get size from header
-    uint64_t size = *header & ~0xF;
-    
-    // clear allocated in header
-    *header = size | 0;
-    
-    // clear allocated in footer
-    uint64_t* footer = (uint64_t*)((char*)ptr + size - 8);
-    *footer = size | 0;
+    uint64_t* header = (uint64_t*)ptr - 1;
 
-    // ! time to coalesce next block ---- past has always resulted in segmentation fault
+    // Mark the block as free
+    size_t block_size = *header & ~1; // Clear the allocated bit
+    
+    // Set the footer for the freed block
+    uint64_t* footer = header + (block_size / 8);
+    
+
+     // ! time to coalesce next block ---- past has always resulted in segmentation fault
+     
+    //coalesce with the next block if it's free
+    uint64_t* next_header = (uint64_t *)((char *)footer + 1);
+    if (next_header < (uint64_t*)mm_heap_hi() && !(*next_header & 1)) {
+        size_t next_size = *next_header;
+        block_size += next_size + ALIGNMENT; // Add the size of the next block and header/footer overhead
+        *header = block_size|0;              // Update header
+        //*footer = block_size;
+        
+    }
+
+    // try to coalesce with the previous block if it's free
+    // uint64_t* prev_footer = (uint64_t *)((char *)header - 1);
+    // if (prev_footer > (uint64_t*)mm_heap_lo() && !(*prev_footer & 1)) {
+    //     size_t prev_size = *prev_footer;
+    //     uint64_t* prev_header = prev_footer - (prev_size / 8);
+    //     block_size += prev_size + ALIGNMENT; // add the size of the previous block and header/footer overhead
+    //     *prev_header = block_size;           // update new header
+    //     //footer = prev_header + (block_size / 8) - 1;
+    //     *footer = block_size;                // update new footer
+    //}
+   
 
 }
 
