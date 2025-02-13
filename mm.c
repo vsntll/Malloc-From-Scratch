@@ -58,9 +58,9 @@ static size_t align(size_t x)
 
 typedef uint64_t word_t;
 
-static const size_t WSIZE = sizeof(word_t); // word and header/footer size
-// static const size_t DSIZE = 2*WSIZE; // doubleword size
-//static const size_t min_block_size = DSIZE; // min block size
+static const size_t WSIZE = 8; // word and header/footer size
+// static const size_t DSIZE = 8; // doubleword size
+// static const size_t min_block_size = DSIZE; // min block size
 // static const size_t CHUNKSIZE = (1<<12); // extend heap by this amount
 
 // static uint64_t* prologue; // prologue
@@ -139,7 +139,7 @@ int getBit(uint64_t num, int index){
 
 
 // returning T/F based on whether or not it is a header or a footer
-//? scrap?
+//? scrap? scrap.
 int is_header(uint64_t num, uint64_t* ptr, int i_offset){
     uint64_t potBlock = num >> 1;
     int potBlockStat = getBit(num, 63);
@@ -204,10 +204,12 @@ bool mm_init(void)
  */
 void* malloc(size_t size)
 {
+    // IMPLEMENT THIS
+    //checks if size is 0
     if (size == 0) {
         return NULL;
     }
-    size_t aligned = align(size);
+
     struct block_meta *block = find_free_block(aligned);
 
     // ! check if free block
@@ -314,11 +316,26 @@ void free(void* ptr)
 void* realloc(void* oldptr, size_t size)
 {
     // IMPLEMENT THIS
-    // size_t aligned = align(size);
-    
-    // void* readd(malloc(aligned));
-    // mem_memcpy(readd, oldptr, size);
-    return NULL;
+    if (size == 0) {
+        free(oldptr);
+        return NULL;
+    }
+    //frees the block if the size is 0
+    if (oldptr == NULL) {
+        return malloc(size);
+    }
+    // size_t old_size = get_size(oldptr);
+    // size_t new_size;
+
+    // temp store data & copy to new block
+    unsigned char buf[size];
+    mem_memcpy(buf, oldptr, size);
+    void * ptr = malloc(size);
+    mem_memcpy(ptr, buf, size);
+
+
+    return ptr;
+
 }
 
 /*
