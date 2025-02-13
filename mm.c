@@ -59,13 +59,13 @@ static size_t align(size_t x)
 typedef uint64_t word_t;
 
 static const size_t WSIZE = sizeof(word_t); // word and header/footer size
-static const size_t DSIZE = 2*WSIZE; // doubleword size
+// static const size_t DSIZE = 2*WSIZE; // doubleword size
 //static const size_t min_block_size = DSIZE; // min block size
-static const size_t CHUNKSIZE = (1<<12); // extend heap by this amount
+// static const size_t CHUNKSIZE = (1<<12); // extend heap by this amount
 
-static uint64_t* prologue; // prologue
-static uint64_t* epilogue; // epilogue
-static uint64_t* noFreeBlock; //list of free blocks
+// static uint64_t* prologue; // prologue
+// static uint64_t* epilogue; // epilogue
+// static uint64_t* noFreeBlock; //list of free blocks
 
 struct block_meta {
     size_t size;
@@ -161,31 +161,42 @@ int is_header(uint64_t num, uint64_t* ptr, int i_offset){
 bool mm_init(void)
 {
     // IMPLEMENT THIS
-    size_t initial = align(CHUNKSIZE);
-    word_t *start = (word_t *)mem_sbrk(initial);
-    //error check
-    if (start == (void *)-1){
+    // size_t initial = align(CHUNKSIZE);
+    // word_t *start = (word_t *)mem_sbrk(initial);
+    // //error check
+    // if (start == (void *)-1){
+    //     return false;
+    // }
+
+    // // set the initial size of the heap
+    // prologue = start;
+    // set_header(prologue, DSIZE, 1, 1);
+    // set_footer(prologue, DSIZE, 1, 1);
+
+    // // set the first block header
+    // epilogue = (word_t *)((char *)start + initial - WSIZE);
+    // set_header(epilogue, 0, 1, 1);
+
+    // noFreeBlock = NULL; // initialize free list
+
+    // // set the prologue and epilogue pointers
+    // if (prologue == (word_t *)mem_heap_lo() && initial == mem_heapsize()){
+    //     return true;
+    // }
+    // else{
+    //     return false;
+    // }
+    uint64_t* start = mm_sbrk(align(32));
+    if (start == (void *)-1) {
         return false;
     }
 
-    // set the initial size of the heap
-    prologue = start;
-    set_header(prologue, DSIZE, 1, 1);
-    set_footer(prologue, DSIZE, 1, 1);
+    start[0] = 1;
+    start[1] = 1;
+    start[2] = 1;
+    start[3] = 1;
 
-    // set the first block header
-    epilogue = (word_t *)((char *)start + initial - WSIZE);
-    set_header(epilogue, 0, 1, 1);
-
-    noFreeBlock = NULL; // initialize free list
-
-    // set the prologue and epilogue pointers
-    if (prologue == (word_t *)mem_heap_lo() && initial == mem_heapsize()){
-        return true;
-    }
-    else{
-        return false;
-    }
+    return true;
 }
 
 /*
