@@ -59,19 +59,27 @@ typedef uint64_t word_t;
 
 static const size_t WSIZE = sizeof(word_t); // word and header/footer size
 static const size_t DSIZE = 2*WSIZE; // doubleword size
-static const size_t min_block_size = DSIZE; // min block size
+//static const size_t min_block_size = DSIZE; // min block size
 static const size_t CHUNKSIZE = (1<<12); // extend heap by this amount
 
-static uint64_t* prologue; // prologue
-static uint64_t* epilogue; // epilogue
-static uint64_t* noFreeBlock; //list of free blocks
+// static uint64_t* prologue; // prologue
+// static uint64_t* epilogue; // epilogue
+// static uint64_t* noFreeBlock; //list of free blocks
 
-void set_header(word_t* block, size_t size, int prev_alloc, int alloc) {
+struct block_meta {
+    size_t size;
+    int is_free;
+    struct block_meta *next;
+};
+
+struct block_meta *free_list = NULL;
+
+void set_header(word_t *block, size_t size, int prev_alloc, int alloc){
     *block = (size) | (prev_alloc << 1) | alloc;
 }
 
-void set_footer(word_t* block, size_t size, int prev_alloc, int alloc) {
-    word_t* footer = block + (size / WSIZE) - 1;
+void set_footer(word_t *block, size_t size, int prev_alloc, int alloc){
+    word_t *footer = block + (size / WSIZE) - 1;
     *footer = (size) | (prev_alloc << 1) | alloc;
 }
 
@@ -85,7 +93,7 @@ int is_header(uint64_t num, uint64_t* ptr, int i_offset){
     uint64_t potBlock = num >> 1;
     int potBlockStat = getBit(num, 63);
     uint64_t offset = potBlock/8;
-    if (inheap(ptr + i_offset + offset + 1)== false){
+    if ((char*)in_heap(ptr + i_offset + offset + 1) >= (char*)mm_heap_hi()){
         return 0;
     }
     //
@@ -102,27 +110,40 @@ int is_header(uint64_t num, uint64_t* ptr, int i_offset){
 bool mm_init(void)
 {
     // IMPLEMENT THIS
-    size_t initial = align(CHUNKSIZE);
-    word_t* start = (word_t*)mm_sbrk(initial);
+    // size_t initial = align(CHUNKSIZE);
+    // word_t *start = (word_t *)mem_sbrk(initial);
+    // if (start == (void *)-1)
+    // {
+    //     return false;
+    // }
+
+    // prologue = start;
+    // set_header(prologue, DSIZE, 1, 1);
+    // set_footer(prologue, DSIZE, 1, 1);
+
+    // epilogue = (word_t *)((char *)start + initial - WSIZE);
+    // set_header(epilogue, 0, 1, 1);
+
+    // noFreeBlock = NULL; // initialize free list
+
+    // if (prologue == (word_t *)mem_heap_lo() && initial == mem_heapsize())
+    // {
+    //     return true;
+    // }
+    // else
+    // {
+    //     return false;
+    // }
+
+    uint64_t* start = mm_sbrk(32);
     if (start == (void*)-1) {
         return false;
     }
 
-    prologue = start;
-    set_header(prologue, DSIZE, 1, 1);
-    set_footer(prologue, DSIZE, 1, 1);
-    
-    epilogue = (word_t*)((char*)start + initial - WSIZE);
-    set_header(epilogue, 0, 1, 1);
-
-    noFreeBlock = NULL; //initialize free list
-
-    if (prologue == (word_t)mm_heap_lo()&& initial == mm_heapsize()){
-        return true;
-    }
-    else {
-        return false;
-    }
+    start[1] = 1;
+    start[2] = 1;
+    start[3] = 1;
+    return true;
 }
 
 /*
@@ -136,7 +157,9 @@ void* malloc(size_t size)
     size_t aligned = align(size);
     uint64_t* ptr = mm_heap_lo() + 3;
     int i = 0;
+    // Find a free block
     while(ptr < mm_heap_hi()){
+        // Check if the block is free and large enough
         if ((is_header(ptr[1], ptr, i) == 1) && (getBit(ptr[i], 63) == 0)){
             uint64_t blockSize = ptr[i] >> 1;
             if (blockSize == aligned){
@@ -144,6 +167,7 @@ void* malloc(size_t size)
                 ptr[i + aligned/8 + 1] = ptr[i];
                 return ptr + i + 1;
             }
+            // parse through header/footer and replace and append as required
             else if (blockSize > aligned){
                 ptr[i] = aligned << 1 | 1;
                 ptr[i + aligned/8 + 1] = ptr[i];
@@ -152,7 +176,17 @@ void* malloc(size_t size)
                 return ptr + i + 1;
             }
         }
+        i++;
+        ptr++;
     }
+    ptr[heap_size() / WSIZE] = 1;
+    uint64_t* new_ptr = mm_sbrk(CHUNKSIZE);
+    if (new_ptr == (void*)-1) {
+        return NULL;
+    }
+    new_ptr[0] = aligned << 1 | 1;
+    new_ptr[aligned / 8 + 1] = aligned << 1 | 1;
+    return new_ptr + 1;
     
 }
 
@@ -165,6 +199,8 @@ void free(void* ptr)
     if (!ptr) {
         return;
     }
+    
+}
 
 /*
  * realloc
