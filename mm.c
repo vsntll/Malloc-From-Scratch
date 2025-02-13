@@ -138,6 +138,42 @@ void* malloc(size_t size)
 
 }
 
+void coalesce_blocks(uint64_t** header, uint64_t** footer, size_t* block_size) {
+    // Coalesce with the next block if it's free
+    uint64_t* next_header = *header + *block_size / 8;
+    if (next_header < (uint64_t*)mm_heap_hi() && !(*next_header & 1)) {
+        size_t next_size = *next_header & ~1; // Clear the allocated bit
+        *block_size += next_size + ALIGNMENT; // Add the size of the next block and header/footer overhead
+        *footer  = (uint64_t*)((char*)next_header + next_size); // ? maybe add - ALIGNMENT if this seg faults like it will
+        *header = (uint64_t*)((char*)*header - next_size - ALIGNMENT); // Move header pointer back
+        *footer = (uint64_t*)((char*)*footer - next_size - ALIGNMENT); // Move footer pointer back
+    }
+
+    uint64_t* prev_footer = (uint64_t*)((char*)(*header) - ALIGNMENT);
+    if (prev_footer > (uint64_t*)mm_heap_lo() && !(*prev_footer & 1)) {
+        size_t prev_size = *prev_footer & ~1; // Clear the allocated bit
+        if (prev_size >= ALIGNMENT && (char*)(*header) - prev_size - ALIGNMENT >= (char*)mm_heap_lo()){
+            *header = (uint64_t*)((char*)(*header) - prev_size - ALIGNMENT);
+            **header = *block_size | 0;
+            **footer = *block_size | 0;
+
+        }
+
+    }
+}
+
+//check for corruption
+void validate_heap() {
+    uint64_t* curr = (uint64_t*)mm_heap_lo();
+    while (curr < (uint64_t*)mm_heap_hi()) {
+        size_t block_size = *curr & ~1;
+        if (block_size < ALIGNMENT || (uintptr_t)curr % ALIGNMENT != 0) {
+            printf("Heap corruption detected at %p\n", (void*)curr);
+            exit(1);
+        }
+        curr = (uint64_t*)((char*)curr + block_size);
+    }
+}
 
 /*
  * free
@@ -147,6 +183,7 @@ void free(void* ptr){
     /*
     ! THE GLORIUS SEGMENTATION FAULT MAKER
     */ 
+   validate_heap();
 
     if (ptr == NULL){ // null
         return;
@@ -164,29 +201,31 @@ void free(void* ptr){
     // Set the footer for the freed block
     uint64_t *footer = (uint64_t *)((char *)ptr + block_size - ALIGNMENT);
     
+    *footer = block_size | 0;
+    coalesce_blocks(&header, &footer, &block_size);
 
-     // ! time to coalesce next block ---- past has always resulted in segmentation fault
+    //  //? time to coalesce next block ---- past has always resulted in segmentation fault
      
-    //coalesce with the next block if it's free
-    uint64_t *next_header = (uint64_t *)((char *)ptr + block_size);
-    if (next_header < (uint64_t*)mm_heap_hi() && !(*next_header & 1)) {
-        size_t next_size = *next_header & ~1; // Clear the allocated bit
-        block_size += next_size + ALIGNMENT; // Add the size of the next block and header/footer overhead
-        *header = block_size|0;              // Update header
-        *footer = block_size|0;              // Update footer
-        //printf("Coalesced with next block: new size = %zu\n", block_size);
-    }
+    // //coalesce with the next block if it's free
+    // uint64_t *next_header = (uint64_t *)((char *)ptr + block_size);
+    // if (next_header < (uint64_t*)mm_heap_hi() && !(*next_header & 1)) {
+    //     size_t next_size = *next_header & ~1; // Clear the allocated bit
+    //     block_size += next_size + ALIGNMENT; // Add the size of the next block and header/footer overhead
+    //     *header = block_size|0;              // Update header
+    //     *footer = block_size|0;              // Update footer
+    //     //printf("Coalesced with next block: new size = %zu\n", block_size);
+    // }
 
-    // try to coalesce with the previous block if it's free
-    uint64_t* prev_footer = (uint64_t*)((char*)header - ALIGNMENT);
-    if (prev_footer > (uint64_t*)mm_heap_lo() && !(*prev_footer & 1)) {
-        size_t prev_size = *prev_footer & ~1; // Clear the allocated bit
-        block_size += prev_size + ALIGNMENT; // Add the size of the previous block and header/footer overhead
-        header = (uint64_t*)((char*)header - prev_size - ALIGNMENT); // ? problem child
-        *header = block_size | 0;                // Update header
-        *footer = block_size | 0;                // Update footer
-        //printf("Coalesced with previous block: new size = %zu\n", block_size);
-    }
+    // // try to coalesce with the previous block if it's free
+    // uint64_t* prev_footer = (uint64_t*)((char*)header - ALIGNMENT);
+    // if (prev_footer > (uint64_t*)mm_heap_lo() && !(*prev_footer & 1)) {
+    //     size_t prev_size = *prev_footer & ~1; // Clear the allocated bit
+    //     block_size += prev_size + ALIGNMENT; // Add the size of the previous block and header/footer overhead
+    //     //header = (uint64_t*)((char*)header - prev_size - ALIGNMENT); // ! problem child
+    //     *header = block_size | 0;                // Update header
+    //     *footer = block_size | 0;                // Update footer
+    //     //printf("Coalesced with previous block: new size = %zu\n", block_size);
+    //}
 
 }
 
