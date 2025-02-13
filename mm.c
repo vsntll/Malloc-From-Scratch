@@ -101,13 +101,36 @@ struct block_meta *find_free_block(size_t size)
 
 //helper to split block
 void split_block(struct block_meta *block, size_t size){
+    // check if the block is large enough to split
     struct block_meta *new_block = (struct block_meta *)((char *)block + size + sizeof(struct block_meta));
-    new_block->size = block->size - size - sizeof(struct block_meta);
-    new_block->is_free = 1;
-    new_block->next = block->next;
+    new_block->size = block->size - size - sizeof(struct block_meta);   // update the size of the new block
+    new_block->is_free = 1;                     // mark the new block as free
+    new_block->next = block->next;              // link the new block to the next block
 
-    block->size = size;
-    block->next = new_block;
+    block->size = size;     // update the size of the current block
+    block->next = new_block;        // link the current block to the new block
+}
+
+//helper to allocate
+void mark_as_allocated(struct block_meta *block, size_t size){
+    block->is_free = 0;     // mark not free (allocated)
+    block->size = size;   // update the size of the block
+}
+
+//helper to extend heap
+void *extend_heap(size_t size){
+    void *block = mem_sbrk(size + sizeof(struct block_meta));       // extend the heap
+    if (block == (void *)-1)        //error check
+    {
+        return NULL;
+    }
+
+    struct block_meta *meta = (struct block_meta *)block;          // create a new block
+    meta->size = size;
+    meta->is_free = 0;
+    meta->next = NULL;
+
+    return meta;
 }
 
 int getBit(uint64_t num, int index){
@@ -116,6 +139,7 @@ int getBit(uint64_t num, int index){
 
 
 // returning T/F based on whether or not it is a header or a footer
+//? scrap?
 int is_header(uint64_t num, uint64_t* ptr, int i_offset){
     uint64_t potBlock = num >> 1;
     int potBlockStat = getBit(num, 63);
@@ -175,13 +199,29 @@ void* malloc(size_t size)
     size_t aligned = align(size);
     struct block_meta *block = find_free_block(aligned);
 
+    // ! check if free block
     if(block){
+        // check if the block is large enough to split
         if(block-> size > aligned + sizeof(struct block_meta)){
             split_block(block, aligned);
         }
-        
+        mark_as_allocated(block, aligned); //allocate
+        return(void *)(block + 1); //return payload
         
     }
+
+    // ! no free block found - extend heap 
+    block = (struct block_meta *) extend_heap(aligned);
+    if (!block){
+        return NULL; // no memory available
+    }
+
+    mark_as_allocated(block, aligned);  //allocate
+    return (void *)(block + 1); // return payload
+
+
+
+
 
     // uint64_t* ptr = mm_heap_lo() + 3;
     // int i = 0;
