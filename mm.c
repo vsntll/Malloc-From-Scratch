@@ -75,29 +75,6 @@ struct block_meta {
 
 struct block_meta *free_list = NULL;
 
-//helper to set header
-void set_header(word_t *block, size_t size, int prev_alloc, int alloc){
-    *block = (size) | (prev_alloc << 1) | alloc;
-}
-
-//helper to set footer
-void set_footer(word_t *block, size_t size, int prev_alloc, int alloc){
-    word_t *footer = block + (size / WSIZE) - 1;
-    *footer = (size) | (prev_alloc << 1) | alloc;
-}
-
-//helper to find a free block
-struct block_meta *find_free_block(size_t size)
-{
-    struct block_meta *current = free_list; // start from the head of the list
-    while (current){
-        if (current->is_free && current->size >= size){  // check if the block is free and large enough
-            return current;
-        }
-        current = current->next;                // move to the next block
-    }
-    return NULL;
-}
 
 //helper to split block
 void split_block(struct block_meta *block, size_t size){
@@ -191,10 +168,10 @@ bool mm_init(void)
         return false;
     }
 
-    start[0] = 1;
-    start[1] = 1;
-    start[2] = 1;
-    start[3] = 1;
+    start[0] = 0;
+    start[1] = 0;
+    start[2] = 0;
+    start[3] = 0;
 
     return true;
 }
@@ -205,70 +182,61 @@ bool mm_init(void)
 void* malloc(size_t size)
 {
     // IMPLEMENT THIS
-    //checks if size is 0
-    if (size == 0) {
-        return NULL;
-    }
+    // if size is 0, return NULL
+    if (size == 0) return NULL;
 
-    struct block_meta *block = find_free_block(aligned);
+    //align
+    size = align(size);
 
-    // ! check if free block
-    if(block){
-        // check if the block is large enough to split
-        if(block-> size > aligned + sizeof(struct block_meta)){
-            split_block(block, aligned);
+    // check if size is less than the minimum block size
+    uint64_t* current = (uint64_t*) mm_heap_lo() + 3; 
+    uint64_t* end = (uint64_t*) mm_heap_hi();   
+
+    //find da block
+    while (current < end) {
+        //check if current is header, aligned, and last bit is 0
+        if (!(*current & 0xF) && !(*current & 1)){
+            // this is a header
+            if (*current == size){
+                *current = size | 1;
+                current[size/8 + 1] = size | 1; //footer
+                return (void*) (current + 1); // return payload
+            }
+            //payload + H&F fits in available space. if so- add block, add footer & header for empty space
+            else if (*current > size + ALIGNMENT){ 
+                // ! split
+                uint64_t* new_block = current + size/8 + 2; //make the empty
+                *new_block = (*(current) - size - ALIGNMENT) | 0; // add the header
+                *current = size | 1;
+                current[size/8 + 1] = size | 1; // footer
+                new_block[*new_block/8 + 1] = *new_block; // footer for empty
+                return (void*) (current + 1); // return payload 
+            }
+            // all else fails            
+            else{
+                // hello epilogue! become the header.
+                current[(mm_heapsize()/8 - 1)] = size| 1;
+                // extend heap
+                uint64_t* new_block = mm_sbrk(size + ALIGNMENT); 
+                if (new_block == (void*)-1) {   //error handling
+                    return NULL;
+                }
+                // set footer
+                new_block[size / 8] = size | 1; 
+
+                // set epilogue
+                new_block[size / 8 + 1] = ALIGNMENT | 1; 
+                return new_block;
+
+            }
         }
-        mark_as_allocated(block, aligned); //allocate
-        return(void *)(block + 1); //return payload
         
+        current++;
     }
 
-    // ! no free block found - extend heap 
-    block = (struct block_meta *) extend_heap(aligned);
-    if (!block){
-        return NULL; // no memory available
-    }
-
-    mark_as_allocated(block, aligned);  //allocate
-    return (void *)(block + 1); // return payload
+    return NULL; // oops - nothing fits
 
 
-
-
-
-    // uint64_t* ptr = mm_heap_lo() + 3;
-    // int i = 0;
-    // // Find a free block
-    // while((char*)ptr < (char*)mm_heap_hi()){
-    //     // Check if the block is free and large enough
-    //     if ((is_header(ptr[1], ptr, i) == 1) && (getBit(ptr[i], 63) == 0)){
-    //         uint64_t blockSize = ptr[i] >> 1;
-    //         if (blockSize == aligned){
-    //             ptr[i] = ptr[i] | 1;
-    //             ptr[i + aligned/8 + 1] = ptr[i];
-    //             return ptr + i + 1;
-    //         }
-    //         // parse through header/footer and replace and append as required
-    //         else if (blockSize > aligned){
-    //             ptr[i] = aligned << 1 | 1;
-    //             ptr[i + aligned/8 + 1] = ptr[i];
-    //             ptr[i + aligned/8 + 2] = (blockSize - aligned) << 1 | 0;
-    //             ptr[i + aligned/8 + 1] = (blockSize - aligned) << 1 | 0;
-    //             return ptr + i + 1;
-    //         }
-    //     }
-    //     i++;
-    //     ptr++;
-    // }
-    // ptr[mm_heapsize() / WSIZE] = 1;
-    // uint64_t* new_ptr = mm_sbrk(CHUNKSIZE);
-    // if (new_ptr == (void*)-1) {
-    //     return NULL;
-    // }
-    // new_ptr[0] = aligned << 1 | 1;
-    // new_ptr[aligned / 8 + 1] = aligned << 1 | 1;
-    // return new_ptr + 1;
-    
 }
 
 /*
@@ -277,35 +245,35 @@ void* malloc(size_t size)
 void free(void* ptr)
 {
     // IMPLEMENT THIS
-    if (!ptr) {
-        return;
-    }
+    // if (!ptr) {
+    //     return;
+    // }
 
-    struct block_meta *block = (struct block_meta *)ptr - 1; // get the block header
-    block->is_free = 1; // mark the block as free
-    struct block_meta *next_block = (struct block_meta *)((char *)block + block-> size);
-    if (next_block-> is_free){
-        block-> size += next_block-> size; // merge with next block
-        block->next = next_block->next; // link to the next block
-    }
+    // struct block_meta *block = (struct block_meta *)ptr - 1; // get the block header
+    // block->is_free = 1; // mark the block as free
+    // struct block_meta *next_block = (struct block_meta *)((char *)block + block-> size);
+    // if (next_block-> is_free){
+    //     block-> size += next_block-> size; // merge with next block
+    //     block->next = next_block->next; // link to the next block
+    // }
 
-    // ! Coalesce!!!!!!!!!!!!!
+    // // ! Coalesce!!!!!!!!!!!!!
 
-    struct block_meta *prev_block = free_list;
+    // struct block_meta *prev_block = free_list;
 
-    while(prev_block && prev_block != block){
-        prev_block = prev_block->next;
-    }
+    // while(prev_block && prev_block != block){
+    //     prev_block = prev_block->next;
+    // }
 
-    // check if the previous block is free  
-    if(prev_block && prev_block -> is_free){
-        prev_block -> size += block -> size; // merge with previous block
-        prev_block -> next = block-> next; // link to the next block
-    }
-    else{
-        block-> next = free_list;
-        free_list = block; 
-    }
+    // // check if the previous block is free  
+    // if(prev_block && prev_block -> is_free){
+    //     prev_block -> size += block -> size; // merge with previous block
+    //     prev_block -> next = block-> next; // link to the next block
+    // }
+    // else{
+    //     block-> next = free_list;
+    //     free_list = block; 
+    // }
     
     
 }
@@ -320,18 +288,15 @@ void* realloc(void* oldptr, size_t size)
         free(oldptr);
         return NULL;
     }
-    //frees the block if the size is 0
+    //frees block if size is 0
     if (oldptr == NULL) {
         return malloc(size);
     }
-    // size_t old_size = get_size(oldptr);
-    // size_t new_size;
-
     // temp store data & copy to new block
     unsigned char buf[size];
-    mem_memcpy(buf, oldptr, size);
+    mm_memcpy(buf, oldptr, size);
     void * ptr = malloc(size);
-    mem_memcpy(ptr, buf, size);
+    mm_memcpy(ptr, buf, size);
 
 
     return ptr;
