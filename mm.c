@@ -104,6 +104,21 @@ static size_t MAX(size_t x, size_t y) {
     return (x > y) ? x : y;
 }
 
+static void *extend_heap(size_t words){
+    char *bp;
+    size_t size;
+
+    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+    if ((long)(bp = mem_sbrk(size)) == -1){
+        return NULL;
+    }
+
+    PUT(HDRP(bp), PACK(size, 0));
+    PUT(FTRP(bp), PACK(size, 0));
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
+
+    return coalesce(bp);
+}
  
  
  
@@ -115,18 +130,34 @@ static size_t MAX(size_t x, size_t y) {
  bool mm_init(void)
  {
      // IMPLEMENT THIS
-     uint64_t* start = mm_sbrk(align(32));
-     if (start == (void *)-1) {
-         return false;
-     }
+    //  uint64_t* start = mm_sbrk(align(32));
+    //  if (start == (void *)-1) {
+    //      return false;
+    //  }
  
-     start[0] = 0;
-     start[1] = 0;
-     start[2] = 0;
-     start[3] = 0;
+    //  start[0] = 0;
+    //  start[1] = 0;
+    //  start[2] = 0;
+    //  start[3] = 0;
  
-     return true;
+    //  return true;
+    if((heap_listp=mem_sbrk(4*WSIZE))==(void*)-1){
+        return false;}
+    PUT(heap_listp,0); 
+    PUT(heap_listp+(1*WSIZE),PACK(DSIZE,1));
+     PUT(heap_listp+(2*WSIZE),PACK(DSIZE,1));
+    PUT(heap_listp+(3*WSIZE),PACK(0,1)); 
+     heap_listp+=(2*WSIZE);
+ 
+  
+    if(extend_heap(CHUNKSIZE/WSIZE)==NULL){
+        return false;}
+    return true
  }
+
+
+
+
  
  /*
   * malloc
@@ -134,99 +165,126 @@ static size_t MAX(size_t x, size_t y) {
  void* malloc(size_t size)
  {
      // IMPLEMENT THIS
+    
+    size_t asize;
+    size_t extend;
+    char *bp;
+
+    if (size == 0)
+     
+
+
+
+
+
+
+
+
+
+
+
+
+
      // if size is 0, return NULL
-     if (size == 0) return NULL;
+    //  if (size == 0) return NULL;
  
-     //align
-     size = align(size);
+    //  //align
+    //  size = align(size);
  
-     // check if size is less than the minimum block size
-     uint64_t* present = (uint64_t*) mm_heap_lo() + 3; 
-     uint64_t* end = (uint64_t*) mm_heap_hi();   
+    //  // check if size is less than the minimum block size
+    //  uint64_t* present = (uint64_t*) mm_heap_lo() + 3; 
+    //  uint64_t* end = (uint64_t*) mm_heap_hi();   
  
-     //find da block
-     while (present < end) {
-         //check if present is header, aligned, and last bit is 0
-         if (!(*present & 0xF) && !(*present & 1)){
-             // this is a header
-             size_t block_size = *present & ~0xF;
-             if (*present == size){
-                 *present = size | 1;
-                 present[size/8 + 1] = size | 1; //footer
-                 return (void*) (present + 1); // return payload
-             }
+    //  //find da block
+    //  while (present < end) {
+    //      //check if present is header, aligned, and last bit is 0
+    //      if (!(*present & 0xF) && !(*present & 1)){
+    //          // this is a header
+    //          size_t block_size = *present & ~0xF;
+    //          if (*present == size){
+    //              *present = size | 1;
+    //              present[size/8 + 1] = size | 1; //footer
+    //              return (void*) (present + 1); // return payload
+    //          }
              
-             else if (block_size >= size){
-                 if(block_size > ALIGNMENT - size){
-                     size_t remaining = block_size - size - ALIGNMENT;
-                     *present = size | 1;
-                     *(present + size/8 + 1) = size | 1;
+    //          else if (block_size >= size){
+    //              if(block_size > ALIGNMENT - size){
+    //                  size_t remaining = block_size - size - ALIGNMENT;
+    //                  *present = size | 1;
+    //                  *(present + size/8 + 1) = size | 1;
  
-                     uint64_t* new_free = present + size/8 + 2; // make the empty
-                     *new_free = remaining | 0;
-                     *(new_free + remaining / 8 + 1) = remaining | 0; // footer
-                     return (void*) (present + 1);
-                 }
-             }
-             //payload + H&F fits in available space. if so- add block, add footer & header for empty space
-             else if (*present > ALIGNMENT - size){ 
-                 // ! split
-                 uint64_t* new = present + size/8 + 2; //make the empty
-                 *new = (*(present) - size - ALIGNMENT) | 0; // add the header
-                 *present = size | 1;
-                 present[size/8 + 1] = size | 1; // footer
-                 new[*new/8 + 1] = *new; // footer for empty
-                 return (void*) (present + 1); // return payload 
-             }
-             // all else fails            
-             else{
-                 // hello epilogue! become the header.
-                 present[(mm_heapsize()/8 - 1)] = size| 1;
-                 // extend heap
-                 uint64_t* new = mm_sbrk(size + ALIGNMENT);      // ! take this out and free the block and should get 100 or figure out coalescing
-                 if (new == (void*)-1) {   //error handling
-                     return NULL;
-                 }
-                 // set footer
-                 new[size / 8] = size | 1; 
+    //                  uint64_t* new_free = present + size/8 + 2; // make the empty
+    //                  *new_free = remaining | 0;
+    //                  *(new_free + remaining / 8 + 1) = remaining | 0; // footer
+    //                  return (void*) (present + 1);
+    //              }
+    //          }
+    //          //payload + H&F fits in available space. if so- add block, add footer & header for empty space
+    //          else if (*present > ALIGNMENT - size){ 
+    //              // ! split
+    //              uint64_t* new = present + size/8 + 2; //make the empty
+    //              *new = (*(present) - size - ALIGNMENT) | 0; // add the header
+    //              *present = size | 1;
+    //              present[size/8 + 1] = size | 1; // footer
+    //              new[*new/8 + 1] = *new; // footer for empty
+    //              return (void*) (present + 1); // return payload 
+    //          }
+    //          // all else fails            
+    //          else{
+    //              // hello epilogue! become the header.
+    //              present[(mm_heapsize()/8 - 1)] = size| 1;
+    //              // extend heap
+    //              uint64_t* new = mm_sbrk(size + ALIGNMENT);      // ! take this out and free the block and should get 100 or figure out coalescing
+    //              if (new == (void*)-1) {   //error handling
+    //                  return NULL;
+    //              }
+    //              // set footer
+    //              new[size / 8] = size | 1; 
  
-                 // set epilogue
-                 new[size / 8 + 1] = ALIGNMENT | 1; 
-                 return new;
+    //              // set epilogue
+    //              new[size / 8 + 1] = ALIGNMENT | 1; 
+    //              return new;
  
-             }
-         }
+    //          }
+    //      }
          
-         present++;
-     }
+    //      present++;
+    //  }
  
-     return NULL; // oops - nothing fits
+    //  return NULL; // oops - nothing fits
  
  
  }
  
- void coalesce_blocks(uint64_t** header, uint64_t** footer, size_t* block_size) {
-     // Coalesce with the next block if it's free
-     uint64_t* next_header = *header + *block_size / 8;
-     if (next_header < (uint64_t*)mm_heap_hi() && !(*next_header & 1)) {
-         size_t next_size = *next_header & ~1; // Clear the allocated bit
-         *block_size += next_size + ALIGNMENT; // Add the size of the next block and header/footer overhead
-         *footer  = (uint64_t*)((char*)next_header + next_size); // ? maybe add - ALIGNMENT if this seg faults like it will
-         *header = (uint64_t*)((char*)*header - next_size - ALIGNMENT); // Move header pointer back
-         *footer = (uint64_t*)((char*)*footer - next_size - ALIGNMENT); // Move footer pointer back
-     }
- 
-     uint64_t* prev_footer = (uint64_t*)((char*)(*header) - ALIGNMENT);
-     if (prev_footer > (uint64_t*)mm_heap_lo() && !(*prev_footer & 1)) {
-         size_t prev_size = *prev_footer & ~1; // Clear the allocated bit
-         if (prev_size >= ALIGNMENT && (char*)(*header) - prev_size - ALIGNMENT >= (char*)mm_heap_lo()){
-             *header = (uint64_t*)((char*)(*header) - prev_size - ALIGNMENT);
-             **header = *block_size | 0;
-             **footer = *block_size | 0;
- 
-         }
- 
-     }
+ void *coalesce (void *bp){
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+    size_t size = GET_SIZE(HDRP(bp));
+
+    // case 1
+    if (prev_alloc && next_alloc) {
+        return bp;
+    }
+    // case 2
+    else if (prev_alloc && !next_alloc) {
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(bp), PACK(size, 0));
+    }
+    //case 3
+    else if (!prev_alloc ** next_alloc){
+        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(bp), PACK(size, 0));
+        bp = PREV_BLKP(bp);
+    }
+    else{
+        size+= GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
+        bp = PREV_BLKP(bp);
+    }
+    return bp;
  }
  
  //check for corruption
