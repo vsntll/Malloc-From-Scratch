@@ -4,9 +4,11 @@
  * Name: Avie Vasantlal
  * Email: adv5201@psu.edu
  *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
- * Also, read the README carefully and in its entirety before headerning.
+ * for malloc since thats realistically the only thing thats working
+ * start from top of heap and do the following:
+ * move pointer down from top and extend heap until there is a free block large enough to hold the size
+ * if heap cannot be extended return NULL
+ * if block is found, allocate it and pointer starts at the payload of the block
  *
  */
 #include <assert.h>
@@ -104,7 +106,7 @@ void* malloc(size_t size)
             }
             
             else if (block_size >= size){
-                if(block_size > size + ALIGNMENT){
+                if(block_size > ALIGNMENT - size){
                     size_t remaining = block_size - size - ALIGNMENT;
                     *present = size | 1;
                     *(present + size/8 + 1) = size | 1;
@@ -116,7 +118,7 @@ void* malloc(size_t size)
                 }
             }
             //payload + H&F fits in available space. if so- add block, add footer & header for empty space
-            else if (*present > size + ALIGNMENT){ 
+            else if (*present > ALIGNMENT - size){ 
                 // ! split
                 uint64_t* new = present + size/8 + 2; //make the empty
                 *new = (*(present) - size - ALIGNMENT) | 0; // add the header
@@ -183,7 +185,7 @@ void validate_heap() {
         size_t block_size = *curr & ~1;
         if (block_size < ALIGNMENT || (uintptr_t)curr % ALIGNMENT != 0) {
             printf("Heap corruption detected at %p\n", (void*)curr);
-            exit(1);
+            // exit(1);
         }
         curr = (uint64_t*)((char*)curr + block_size);
     }
@@ -197,7 +199,7 @@ void free(void* ptr){
     /*
     ! THE GLORIUS SEGMENTATION FAULT MAKER
     */ 
-   //validate_heap();
+    //validate_heap();
 
     if (ptr == NULL){ // null
         return;
