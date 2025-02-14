@@ -60,7 +60,8 @@
  
  static const size_t WSIZE = 4;
  static const size_t  DSIZE = 8;
- //static const size_t CHUNKSIZE (1<<12);
+ static const size_t CHUNKSIZE = (1<<12);
+ static char *heap_listp;
  
  static size_t PACK(size_t size, int alloc){
      return size | alloc;
@@ -104,25 +105,88 @@ static size_t MAX(size_t x, size_t y) {
     return (x > y) ? x : y;
 }
 
-static void *extend_heap(size_t words){
-    char *bp;
+static void* extend_heap(size_t words)
+{
+    char*bp;
     size_t size;
 
-    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
-    if ((long)(bp = mem_sbrk(size)) == -1){
-        return NULL;
-    }
+   size= (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+    if((long)(bp=mem_sbrk(size))==-1){
+    return NULL;}
 
-    PUT(HDRP(bp), PACK(size, 0));
-    PUT(FTRP(bp), PACK(size, 0));
-    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
-
+    PUT(HDRP(bp),PACK(size,0)); 
+    PUT(FTRP(bp),PACK(size,0)); 
+    PUT(HDRP(NEXT_BLKP(bp)),PACK(0,1)); 
+    
     return coalesce(bp);
 }
+
+static void *find_fit(size_t asize){
+    void *bp;
+    
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)){
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))){
+            return bp;
+        }
+        
+    }
+    return NULL;
+}
+
+static void place (void *bp, size_t asize){
+    size_t csize = GET_SIZE(HDRP(bp));
+
+    if ((csize - asize) >= (2*DSIZE)){
+        PUT(HDRP(bp), PACK(asize, 1));
+        PUT(FTRP(bp), PACK(asize, 1));
+        bp = NEXT_BLKP(bp);
+        PUT(HDRP(bp), PACK(csize-asize, 0));
+        PUT(FTRP(bp), PACK(csize-asize, 0));
+    }
+    else{
+        PUT(HDRP(bp), PACK(csize, 1));
+        PUT(FTRP(bp), PACK(csize, 1));
+    }
+
+}
+
+
+static void *coalesce(void*bp)
+ {
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+    size_t size = GET_SIZE(HDRP(bp));
+
+    //case 1
+    if (prev_alloc && next_alloc){
+        return bp;
+    }
+    
+    //case 2
+    else if(prev_alloc && !next_alloc){ 
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        PUT(HDRP(bp),PACK(size,0));
+        PUT(FTRP(bp),PACK(size,0));
+    }
+
+    //case 3
+    else if(!prev_alloc && next_alloc){ 
+        size+=GET_SIZE(HDRP(PREV_BLKP(bp)));
+        PUT(FTRP(bp),PACK(size,0));
+        PUT(HDRP(PREV_BLKP(bp)),PACK(size,0));
+        bp=PREV_BLKP(bp);
+    }
  
- 
- 
- 
+    //case 4
+    else{ 
+        size += GET_SIZE(HDRP(PREV_BLKP(bp)))+ GET_SIZE(FTRP(NEXT_BLKP(bp)));
+        PUT(HDRP(PREV_BLKP(bp)),PACK(size,0));
+        PUT(FTRP(NEXT_BLKP(bp)),PACK(size,0));
+        bp=PREV_BLKP(bp);
+    }
+    return bp;
+    }
+
  
  /*
   * mm_init: returns false on error, true on success.
@@ -130,8 +194,8 @@ static void *extend_heap(size_t words){
  bool mm_init(void)
  {
      // IMPLEMENT THIS
-    //  uint64_t* start = mm_sbrk(align(32));
-    //  if (start == (void *)-1) {
+     //  uint64_t* start = mm_sbrk(align(32));
+     //  if (start == (void *)-1) {
     //      return false;
     //  }
  
@@ -145,14 +209,14 @@ static void *extend_heap(size_t words){
         return false;}
     PUT(heap_listp,0); 
     PUT(heap_listp+(1*WSIZE),PACK(DSIZE,1));
-     PUT(heap_listp+(2*WSIZE),PACK(DSIZE,1));
+    PUT(heap_listp+(2*WSIZE),PACK(DSIZE,1));
     PUT(heap_listp+(3*WSIZE),PACK(0,1)); 
-     heap_listp+=(2*WSIZE);
+    heap_listp+=(2*WSIZE);
  
   
     if(extend_heap(CHUNKSIZE/WSIZE)==NULL){
         return false;}
-    return true
+    return true;
  }
 
 
@@ -170,7 +234,31 @@ static void *extend_heap(size_t words){
     size_t extend;
     char *bp;
 
-    if (size == 0)
+    if (size == 0){
+        return NULL;
+    }
+
+    if (size <= DSIZE){
+        asize = 2*DSIZE;
+    }
+
+    else{
+        asize = DSIZE * ((size + DSIZE + (DSIZE - 1)) / DSIZE);
+    }
+        if ((bp = find_fit(asize)) != NULL){
+            place(bp, asize);
+            return bp;
+        }
+
+        //no fit
+        extend = MAX(asize, CHUNKSIZE);
+        if (( bp = extend_heap(extend/WSIZE)) == NULL){
+            return NULL;
+        }
+        place(bp, asize);
+        return bp;
+}
+
      
 
 
@@ -254,39 +342,6 @@ static void *extend_heap(size_t words){
     //  return NULL; // oops - nothing fits
  
  
- }
- 
- void *coalesce (void *bp){
-    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
-    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
-    size_t size = GET_SIZE(HDRP(bp));
-
-    // case 1
-    if (prev_alloc && next_alloc) {
-        return bp;
-    }
-    // case 2
-    else if (prev_alloc && !next_alloc) {
-        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
-        PUT(HDRP(bp), PACK(size, 0));
-        PUT(FTRP(bp), PACK(size, 0));
-    }
-    //case 3
-    else if (!prev_alloc ** next_alloc){
-        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
-        PUT(HDRP(bp), PACK(size, 0));
-        PUT(FTRP(bp), PACK(size, 0));
-        bp = PREV_BLKP(bp);
-    }
-    else{
-        size+= GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
-        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
-        bp = PREV_BLKP(bp);
-    }
-    return bp;
- }
- 
  //check for corruption
  void validate_heap() {
      uint64_t* curr = (uint64_t*)mm_heap_lo();
@@ -309,24 +364,31 @@ static void *extend_heap(size_t words){
      ! THE GLORIUS SEGMENTATION FAULT MAKER
      */ 
      //validate_heap();
+
+    size_t size = GET_SIZE(HDRP(ptr));
+
+    PUT(HDRP(ptr), PACK(size, 0));
+    PUT(FTRP(ptr), PACK(size, 0));
+    coalesce(ptr);
+    
  
-     if (ptr == NULL){ // null
-         return;
-     }
+    //  if (ptr == NULL){ // null
+    //      return;
+    //  }
  
-     uint64_t* header = (uint64_t*)ptr - 1;
+    //  uint64_t* header = (uint64_t*)ptr - 1;
  
-     if ((*header & 1)==0){
-         return; // already free
-     }
+    //  if ((*header & 1)==0){
+    //      return; // already free
+    //  }
  
-     // Mark the block as free
-     size_t block_size = *header & ~1; // Clear the allocated bit
+    //  // Mark the block as free
+    //  size_t block_size = *header & ~1; // Clear the allocated bit
      
-     // Set the footer for the freed block
-     uint64_t *footer = (uint64_t *)((char *)ptr + block_size - ALIGNMENT);
+    //  // Set the footer for the freed block
+    //  uint64_t *footer = (uint64_t *)((char *)ptr + block_size - ALIGNMENT);
      
-     *footer = block_size | 0;
+    //  *footer = block_size | 0;
      //coalesce_blocks(&header, &footer, &block_size);
  
      //  //? time to coalesce next block ---- past has always resulted in segmentation fault
