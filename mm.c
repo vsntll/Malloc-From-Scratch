@@ -264,17 +264,18 @@ size_t get_size(void *ptr){
     //  start[3] = 0;
  
     //  return true;
-    if((heap_listp=mm_sbrk(4*WSIZE))==(void*)-1){
+    if((heap_listp=mm_sbrk(8))==(void*)-1){
         return false;}
-    PUT(heap_listp,0); 
-    PUT(heap_listp+(1*WSIZE),PACK(DSIZE,1));
-    PUT(heap_listp+(2*WSIZE),PACK(DSIZE,1));
-    PUT(heap_listp+(3*WSIZE),PACK(0,1)); 
-    heap_listp+=(2*WSIZE);
+    // PUT(heap_listp,0); 
+    // PUT(heap_listp+(1*WSIZE),PACK(DSIZE,1));
+    // PUT(heap_listp+(2*WSIZE),PACK(DSIZE,1));
+    // PUT(heap_listp+(3*WSIZE),PACK(0,1)); 
+    // heap_listp+=(2*WSIZE);
  
   
-    if(extend_heap(CHUNKSIZE/WSIZE)==NULL){
-        return false;}
+    // if(extend_heap(CHUNKSIZE/WSIZE)==NULL){
+    //     return false;}
+    head = NULL;
     return true;
  }
 
@@ -297,26 +298,66 @@ size_t get_size(void *ptr){
         return NULL;
     }
 
-    if (size <= DSIZE){
-        asize = 2*DSIZE;
+
+    asize = align(size + 8);
+    free_block_t *prev = NULL;
+    free_block_t *curr = head;
+
+    int iterations = 0;
+    free_block_t *prevBestFit = NULL;
+    free_block_t *currBestFit = NULL;
+
+    while (curr != NULL && iterations < 500 ){
+        if (asize <= GET_SIZE(&curr -> header)){
+            if (currBestFit == NULL || GET_SIZE(&curr -> header) < GET_SIZE(&currBestFit -> header)){
+                currBestFit = curr;
+                prevBestFit = prev;
+            }
+        }
+        prev = curr;
+        curr = curr -> next;
+        iterations += 1;
     }
 
-    else{
-        asize = DSIZE * ((size + DSIZE + (DSIZE - 1)) / DSIZE);
+    if (currBestFit != NULL){
+        if(prevBestFit == NULL){
+            head = currBestFit -> next;
+        }
+        else{
+            prevBestFit -> next = currBestFit -> next;
+        }
+        PUT(currBestFit, PACK(GET_SIZE(&currBestFit -> header), 0));
+        return (char *)currBestFit + 8;
     }
-        if ((bp = find_fit(asize)) != NULL){
-            place(bp, asize);
-            return bp;
-        }
-        validate_heap();
-        //no fit
-        extend = MAX(asize, CHUNKSIZE);
-        if (( bp = extend_heap(extend/WSIZE)) == NULL){
-            return NULL;
-        }
-        validate_heap();
-        place(bp, asize);
-        return bp;
+
+    extend = asize;
+    if ((bp = mm_sbrk(extend))== NULL){
+        return NULL;
+    }
+    PUT(bp, PACK(asize, 1));
+    return bp + 8;
+
+
+    // if (size <= DSIZE){
+    //     asize = 2*DSIZE;
+    // }
+
+    // else{
+    //     asize = DSIZE * ((size + DSIZE + (DSIZE - 1)) / DSIZE);
+    // }
+    //     if ((bp = find_fit(asize)) != NULL){
+    //         place(bp, asize);
+    //         return bp;
+    //     }
+    //     validate_heap();
+    //     //no fit
+    //     extend = MAX(asize, CHUNKSIZE);
+    //     if (( bp = extend_heap(extend/WSIZE)) == NULL){
+    //         return NULL;
+    //     }
+    //     validate_heap();
+    //     place(bp, asize);
+    //     return bp;
 }
 
      
