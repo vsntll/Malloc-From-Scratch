@@ -58,10 +58,12 @@
      return ALIGNMENT * ((x+ALIGNMENT-1)/ALIGNMENT);
  }
  
- static const size_t WSIZE = 4;
+ static const size_t WSIZE = 8;
  static const size_t  DSIZE = 8;
  static const size_t CHUNKSIZE = (1<<12);
  static char *heap_listp;
+
+ struct block_meta *free_list = NULL; //global pointer
  
  static size_t PACK(size_t size, int alloc){
      return size | alloc;
@@ -105,6 +107,30 @@ static size_t MAX(size_t x, size_t y) {
     return (x > y) ? x : y;
 }
 
+struct block_meta{
+    size_t size;
+    struct block_meta *next;
+    int is_free;
+}
+
+
+//function declarations
+static void *extend_heap(size_t words);
+static void *find_fit(size_t size);
+static void place(void *bp, size_t asize);
+static void *coalesce(void *bp);
+bool is_free(void *ptr);
+
+
+
+
+
+
+
+bool is_free(void *ptr) {
+    return !GET_ALLOC(HDRP(ptr));
+}
+
 static void *coalesce(void*bp)
  {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
@@ -141,13 +167,26 @@ static void *coalesce(void*bp)
     return bp;
 }
 
+ //check for corruption
+ void validate_heap() {
+    uint64_t* curr = (uint64_t*)mm_heap_lo();
+    while (curr < (uint64_t*)mm_heap_hi()) {
+        size_t block_size = *curr & ~1;
+        if (block_size < ALIGNMENT || (uintptr_t)curr % ALIGNMENT != 0) {
+            printf("Heap corruption detected at %p\n", (void*)curr);
+            exit(1);
+        }
+        curr = (uint64_t*)((char*)curr + block_size);
+    }
+}
+
 static void* extend_heap(size_t words)
 {
     char*bp;
     size_t size;
 
    size= (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
-    if((long)(bp=mem_sbrk(size))==-1){
+    if((long)(bp=mm_sbrk(size))==-1){
     return NULL;}
 
     PUT(HDRP(bp),PACK(size,0)); 
@@ -207,7 +246,7 @@ static void place (void *bp, size_t asize){
     //  start[3] = 0;
  
     //  return true;
-    if((heap_listp=mem_sbrk(4*WSIZE))==(void*)-1){
+    if((heap_listp=mm_sbrk(4*WSIZE))==(void*)-1){
         return false;}
     PUT(heap_listp,0); 
     PUT(heap_listp+(1*WSIZE),PACK(DSIZE,1));
@@ -251,12 +290,13 @@ static void place (void *bp, size_t asize){
             place(bp, asize);
             return bp;
         }
-
+        validate_heap();
         //no fit
         extend = MAX(asize, CHUNKSIZE);
         if (( bp = extend_heap(extend/WSIZE)) == NULL){
             return NULL;
         }
+        validate_heap();
         place(bp, asize);
         return bp;
 }
@@ -344,18 +384,7 @@ static void place (void *bp, size_t asize){
     //  return NULL; // oops - nothing fits
  
  
- //check for corruption
- void validate_heap() {
-     uint64_t* curr = (uint64_t*)mm_heap_lo();
-     while (curr < (uint64_t*)mm_heap_hi()) {
-         size_t block_size = *curr & ~1;
-         if (block_size < ALIGNMENT || (uintptr_t)curr % ALIGNMENT != 0) {
-             printf("Heap corruption detected at %p\n", (void*)curr);
-             // exit(1);
-         }
-         curr = (uint64_t*)((char*)curr + block_size);
-     }
- }
+
  
  /*
   * free
@@ -365,7 +394,7 @@ static void place (void *bp, size_t asize){
      /*
      ! THE GLORIUS SEGMENTATION FAULT MAKER
      */ 
-     //validate_heap();
+    // validate_heap();
 
     size_t size = GET_SIZE(HDRP(ptr));
 
