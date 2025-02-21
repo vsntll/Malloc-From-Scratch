@@ -471,8 +471,6 @@ size_t get_size(void *ptr){
     //  }
  
     //  uint64_t* header = (uint64_t*)ptr - 1;
- 
-    //  if ((*header & 1)==0){
     //      return; // already free
     //  }
  
