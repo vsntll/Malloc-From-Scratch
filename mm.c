@@ -60,7 +60,7 @@
  
  static const size_t WSIZE = 8;
  static const size_t  DSIZE = 8;
- static const size_t CHUNKSIZE = (1<<12);
+ //static const size_t CHUNKSIZE = (1<<12);
  static char *heap_listp;
 
  struct block_meta *free_list = NULL; //global pointer
@@ -111,7 +111,7 @@ struct block_meta{
     size_t size;
     struct block_meta *next;
     int is_free;
-}
+};
 
 
 //function declarations
@@ -119,12 +119,18 @@ static void *extend_heap(size_t words);
 static void *find_fit(size_t size);
 static void place(void *bp, size_t asize);
 static void *coalesce(void *bp);
+size_t get_size(void *ptr);
 bool is_free(void *ptr);
+void merge_blocks(void *oldptr, void *next_block);
 
+typedef struct free_block_t{
+    size_t header;
+    struct free_block_t *next;
+    struct free_block_t *prev;
+} free_block_t;
 
-
-
-
+//set head pointer to first free block in free list
+free_block_t *head = NULL;
 
 
 bool is_free(void *ptr) {
@@ -180,21 +186,22 @@ static void *coalesce(void*bp)
     }
 }
 
-static void* extend_heap(size_t words)
-{
-    char*bp;
-    size_t size;
 
-   size= (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
-    if((long)(bp=mm_sbrk(size))==-1){
-    return NULL;}
 
-    PUT(HDRP(bp),PACK(size,0)); 
-    PUT(FTRP(bp),PACK(size,0)); 
-    PUT(HDRP(NEXT_BLKP(bp)),PACK(0,1)); 
-    
+static void *extend_heap(size_t size) {
+    char *bp;
+
+    if ((void *)(bp = mem_sbrk(size)) == (void *)-1) {
+        return NULL;
+    }
+
+    PUT(HDRP(bp), PACK(size, 0));           // Free block header
+    PUT(FTRP(bp), PACK(size, 0));           // Free block footer
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));   // New epilogue header
+
     return coalesce(bp);
 }
+
 
 static void *find_fit(size_t asize){
     void *bp;
@@ -206,6 +213,14 @@ static void *find_fit(size_t asize){
         
     }
     return NULL;
+}
+
+void merge_blocks(void *oldptr, void *next_block){
+    size_t oldsize = get_size(oldptr);
+    size_t nextsize = get_size(next_block);
+
+    PUT(HDRP(oldptr), PACK(oldsize + nextsize, 0));
+    PUT(FTRP(oldptr), PACK(oldsize + nextsize, 0));
 }
 
 static void place (void *bp, size_t asize){
@@ -225,6 +240,9 @@ static void place (void *bp, size_t asize){
 
 }
 
+size_t get_size(void *ptr){
+    return GET_SIZE(HDRP(ptr));
+}
 
 
 
