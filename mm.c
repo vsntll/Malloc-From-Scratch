@@ -455,11 +455,15 @@ size_t get_size(void *ptr){
      */ 
     // validate_heap();
 
-    size_t size = GET_SIZE(HDRP(ptr));
+    if (ptr == NULL) return;
 
-    PUT(HDRP(ptr), PACK(size, 0));
-    PUT(FTRP(ptr), PACK(size, 0));
-    coalesce(ptr);
+    PUT(HDRP(ptr), PACK(GET_SIZE(ptr - 8), 0));
+    free_block_t * free = (free_block_t *) HDRP(ptr);
+    
+    free->next = head;
+
+    head = free;
+
     
  
     //  if (ptr == NULL){ // null
