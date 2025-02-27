@@ -4,11 +4,24 @@
  * Name: Avie Vasantlal
  * Email: adv5201@psu.edu
  *
- * for malloc since thats realistically the only thing thats working
- * start from top of heap and do the following:
- * move pointer down from top and extend heap until there is a free block large enough to hold the size
- * if heap cannot be extended return NULL
- * if block is found, allocate it and pointer starts at the payload of the block
+ * How malloc works:
+ * align to nearest multiple within ALIGNMENT
+ * find the block that is large enough to fit the payload
+ * extend the heap
+ * place the block in 
+ * 
+ * How free works:
+ * check if pointer is NULL
+ * mark it as free by clearing the allocated bit
+ * coalesce (4 cases):
+ * both previous & next are allocated
+ * if prev is allocated then next is free
+ * if prev is free then next is allocated
+ * both prev & next are free
+ * 
+ * coalesced block is then added to free list 
+ * 
+ * 
  *
  */
  #include <assert.h>
@@ -139,8 +152,8 @@ bool is_free(void *ptr) {
 
 static void *coalesce(void*bp)
  {
-    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
-    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))); 
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); 
     size_t size = GET_SIZE(HDRP(bp));
 
     //case 1
@@ -202,8 +215,8 @@ static void *extend_heap(size_t size) {
     return coalesce(bp);
 }
 
-
-static void *find_fit(size_t asize){
+//searches free list for block that fits
+static void *find_fit(size_t asize){ 
     void *bp;
     
     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)){
@@ -215,6 +228,7 @@ static void *find_fit(size_t asize){
     return NULL;
 }
 
+//merges in coalescing
 void merge_blocks(void *oldptr, void *next_block){
     size_t oldsize = get_size(oldptr);
     size_t nextsize = get_size(next_block);
@@ -223,6 +237,7 @@ void merge_blocks(void *oldptr, void *next_block){
     PUT(FTRP(oldptr), PACK(oldsize + nextsize, 0));
 }
 
+//places allocated block & splits
 static void place (void *bp, size_t asize){
     size_t csize = GET_SIZE(HDRP(bp));
 
