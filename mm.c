@@ -15,9 +15,9 @@
  * mark it as free by clearing the allocated bit
  * coalesce (4 cases):
  * both previous & next are allocated
- * if prev is allocated then next is free
- * if prev is free then next is allocated
- * both prev & next are free
+ * if prevBestFit is allocated then next is free
+ * if prevBestFit is free then next is allocated
+ * both prevBestFit & next are free
  * 
  * coalesced block is then added to free list 
  * 
@@ -139,7 +139,7 @@ void merge_blocks(void *oldptr, void *next_block);
 typedef struct free_block_t{
     size_t header;
     struct free_block_t *next;
-    struct free_block_t *prev;
+    struct free_block_t *prevBestFit;
 } free_block_t;
 
 //set head pointer to first free block in free list
@@ -357,28 +357,23 @@ size_t get_size(void *ptr){
  void* malloc(size_t size)
  {
      // IMPLEMENT THIS
-    
-    size_t asize;
-    size_t extend;
-    char *bp;
-
     if (size == 0){
         return NULL;
     }
 
 
-    asize = align(size + 8);
-    free_block_t *prev = NULL;
-    free_block_t *curr = head;
+    size_t asize = align(size + 8);
+    //free_block_t *curr = head;
 
-    int iterations = 0;
+    //int iterations = 0;
+    int index = get_list_index(asize);
     free_block_t *prevBestFit = NULL;
     free_block_t *currBestFit = NULL;
-    index = get_list_index(asize);
 
+    // Search for the best fit in segregated lists starting from the appropriate index
     for (int i = index; i < 10 && !currBestFit; i++) {
         free_block_t *current = segregated_free_lists[i];
-        prev = NULL;
+        prevBestFit = NULL;
         
         // Iterate through the list
         while (current) {
@@ -386,7 +381,7 @@ size_t get_size(void *ptr){
                 currBestFit = current;
                 break;
             }
-            prev = current;
+            prevBestFit = current;
             current = current->next;
         }
     }
@@ -395,17 +390,17 @@ size_t get_size(void *ptr){
     //     if (asize <= GET_SIZE(&curr -> header)){
     //         if (currBestFit == NULL || GET_SIZE(&curr -> header) < GET_SIZE(&currBestFit -> header)){
     //             currBestFit = curr;
-    //             prevBestFit = prev;
+    //             prevBestFit = prevBestFit;
     //         }
     //     }
-    //     prev = curr;
+    //     prevBestFit = curr;
     //     curr = curr -> next;
     //     iterations += 1;
     // }
 
-    if (currBestFit != NULL){
-        if(prevBestFit == NULL){
-            head = currBestFit -> next;
+    if (currBestFit){
+        if(prevBestFit){
+            prevBestFit->next = currBestFit->next;
         }
         else{
             segregated_free_lists[get_list_index(GET_SIZE(&currBestFit->header))] = currBestFit->next;
@@ -414,12 +409,11 @@ size_t get_size(void *ptr){
         return (char *)currBestFit + 8;
     }
 
-    extend = asize;
-    if ((bp = mm_sbrk(extend))== NULL){
-        return NULL;
-    }
+    char *bp = mem_sbrk(asize);
+    if (bp == (void *)-1) return NULL;
     PUT(bp, PACK(asize, 1));
-    return bp + 8;
+    return bp + WSIZE;
+
 
 
     // if (size <= DSIZE){
@@ -546,7 +540,7 @@ size_t get_size(void *ptr){
     //  mm_memcpy(ptr, buf, size);
  
  
-    return ptr;
+    return newptr;
  
  }
  
