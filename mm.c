@@ -144,11 +144,45 @@ typedef struct free_block_t{
 
 //set head pointer to first free block in free list
 free_block_t *head = NULL;
-
+free_block_t *segregated_free_lists[10];
 
 bool is_free(void *ptr) {
     return !GET_ALLOC(HDRP(ptr));
 }
+
+// Helper function to get the list index range
+int get_list_index(size_t size) {
+    if (size <= 32) {
+        return 0;
+    }
+    else if (size <= 64) {
+        return 1;
+    }
+    else if (size <= 128) {
+        return 2;
+    }
+    else if (size <= 256) {
+        return 3;
+    }
+    else if (size <= 512) {
+        return 4;
+    }
+    else if (size <= 1024) {
+        return 5;
+    }
+    else if (size <= 2048) {
+        return 6;
+    }
+    else if (size <= 4096) {
+        return 7;
+    }
+    else if (size <= 8192) {
+        return 8;
+    }
+
+    return 9;
+}
+
 
 static void *coalesce(void*bp)
  {
@@ -184,6 +218,23 @@ static void *coalesce(void*bp)
         bp=PREV_BLKP(bp);
     }
     return bp;
+}
+
+// Helper function that splits a free block if excess space is 32 bytes or more, adding the remainder to the free list.
+static void split(size_t size, free_block_t *curblock) {
+    size_t free_size = GET_SIZE(&curblock->header);
+    size_t diff = free_size - size;
+    if (diff >= 32) {  
+        PUT((char *)curblock, PACK(size, 1));
+        PUT((char *)curblock + size, PACK(diff, 0));
+
+        int index = get_list_index(diff);
+        free_block_t *next_block = (free_block_t *)((char *)curblock + size);
+        next_block->next = segregated_free_lists[index];
+        segregated_free_lists[index] = next_block;
+    } else {
+        PUT(curblock, PACK(free_size, 1));  
+    }
 }
 
  //check for corruption
