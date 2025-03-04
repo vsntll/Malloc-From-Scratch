@@ -341,7 +341,9 @@ size_t get_size(void *ptr){
   
     // if(extend_heap(CHUNKSIZE/WSIZE)==NULL){
     //     return false;}
-    head = NULL;
+    for(int i = 0; i < 10; i++) {
+        segregated_free_lists[i] = NULL;
+    }
     return true;
  }
 
@@ -372,27 +374,43 @@ size_t get_size(void *ptr){
     int iterations = 0;
     free_block_t *prevBestFit = NULL;
     free_block_t *currBestFit = NULL;
+    index = get_list_index(asize);
 
-    while (curr != NULL && iterations < 500 ){
-        if (asize <= GET_SIZE(&curr -> header)){
-            if (currBestFit == NULL || GET_SIZE(&curr -> header) < GET_SIZE(&currBestFit -> header)){
-                currBestFit = curr;
-                prevBestFit = prev;
+    for (int i = index; i < 10 && !currBestFit; i++) {
+        free_block_t *current = segregated_free_lists[i];
+        prev = NULL;
+        
+        // Iterate through the list
+        while (current) {
+            if (GET_SIZE(&current->header) >= asize) {
+                currBestFit = current;
+                break;
             }
+            prev = current;
+            current = current->next;
         }
-        prev = curr;
-        curr = curr -> next;
-        iterations += 1;
     }
+
+    // while (curr != NULL && iterations < 500 ){
+    //     if (asize <= GET_SIZE(&curr -> header)){
+    //         if (currBestFit == NULL || GET_SIZE(&curr -> header) < GET_SIZE(&currBestFit -> header)){
+    //             currBestFit = curr;
+    //             prevBestFit = prev;
+    //         }
+    //     }
+    //     prev = curr;
+    //     curr = curr -> next;
+    //     iterations += 1;
+    // }
 
     if (currBestFit != NULL){
         if(prevBestFit == NULL){
             head = currBestFit -> next;
         }
         else{
-            prevBestFit -> next = currBestFit -> next;
+            segregated_free_lists[get_list_index(GET_SIZE(&currBestFit->header))] = currBestFit->next;
         }
-        PUT(currBestFit, PACK(GET_SIZE(&currBestFit -> header), 0));
+        split(asize, currBestFit);
         return (char *)currBestFit + 8;
     }
 
@@ -426,90 +444,6 @@ size_t get_size(void *ptr){
     //     return bp;
 }
 
-     
-
-
-
-
-
-
-
-
-
-
-
-
-
-     // if size is 0, return NULL
-    //  if (size == 0) return NULL;
- 
-    //  //align
-    //  size = align(size);
- 
-    //  // check if size is less than the minimum block size
-    //  uint64_t* present = (uint64_t*) mm_heap_lo() + 3; 
-    //  uint64_t* end = (uint64_t*) mm_heap_hi();   
- 
-    //  //find da block
-    //  while (present < end) {
-    //      //check if present is header, aligned, and last bit is 0
-    //      if (!(*present & 0xF) && !(*present & 1)){
-    //          // this is a header
-    //          size_t block_size = *present & ~0xF;
-    //          if (*present == size){
-    //              *present = size | 1;
-    //              present[size/8 + 1] = size | 1; //footer
-    //              return (void*) (present + 1); // return payload
-    //          }
-             
-    //          else if (block_size >= size){
-    //              if(block_size > ALIGNMENT - size){
-    //                  size_t remaining = block_size - size - ALIGNMENT;
-    //                  *present = size | 1;
-    //                  *(present + size/8 + 1) = size | 1;
- 
-    //                  uint64_t* new_free = present + size/8 + 2; // make the empty
-    //                  *new_free = remaining | 0;
-    //                  *(new_free + remaining / 8 + 1) = remaining | 0; // footer
-    //                  return (void*) (present + 1);
-    //              }
-    //          }
-    //          //payload + H&F fits in available space. if so- add block, add footer & header for empty space
-    //          else if (*present > ALIGNMENT - size){ 
-    //              // ! split
-    //              uint64_t* new = present + size/8 + 2; //make the empty
-    //              *new = (*(present) - size - ALIGNMENT) | 0; // add the header
-    //              *present = size | 1;
-    //              present[size/8 + 1] = size | 1; // footer
-    //              new[*new/8 + 1] = *new; // footer for empty
-    //              return (void*) (present + 1); // return payload 
-    //          }
-    //          // all else fails            
-    //          else{
-    //              // hello epilogue! become the header.
-    //              present[(mm_heapsize()/8 - 1)] = size| 1;
-    //              // extend heap
-    //              uint64_t* new = mm_sbrk(size + ALIGNMENT);      // ! take this out and free the block and should get 100 or figure out coalescing
-    //              if (new == (void*)-1) {   //error handling
-    //                  return NULL;
-    //              }
-    //              // set footer
-    //              new[size / 8] = size | 1; 
- 
-    //              // set epilogue
-    //              new[size / 8 + 1] = ALIGNMENT | 1; 
-    //              return new;
- 
-    //          }
-    //      }
-         
-    //      present++;
-    //  }
- 
-    //  return NULL; // oops - nothing fits
- 
- 
-
  
  /*
   * free
@@ -523,12 +457,15 @@ size_t get_size(void *ptr){
 
     if (ptr == NULL) return;
 
-    PUT(HDRP(ptr), PACK(GET_SIZE(ptr - 8), 0));
+    PUT(HDRP(ptr), PACK(GET_SIZE(HDRP(ptr)), 0));
+    int index = get_list_index(GET_SIZE(HDRP(ptr)));
     free_block_t * free = (free_block_t *) HDRP(ptr);
-    
-    free->next = head;
+    free -> next = segregated_free_lists[index];
+    segregated_free_lists[index] = free;    
 
-    head = free;
+    // free->next = head;
+
+    // head = free;
 
     
  
@@ -589,14 +526,27 @@ size_t get_size(void *ptr){
      if (oldptr == NULL) {
          return malloc(size);
      }
-     // temp store data & copy to new block
-     unsigned char buf[size];
-     mm_memcpy(buf, oldptr, size);
-     void * ptr = malloc(size);
-     mm_memcpy(ptr, buf, size);
+     void *newptr = malloc(size);
+     if(!newptr){
+        return NULL;
+     }
+    size_t copy_size = GET_SIZE(HDRP(oldptr))- DSIZE;
+    if (size < copy_size) {
+        copy_size = size;
+    }  
+    memcpy(newptr, oldptr, copy_size);
+    free(oldptr);
+    
+
+
+    //  // temp store data & copy to new block
+    //  unsigned char buf[size];
+    //  mm_memcpy(buf, oldptr, size);
+    //  void * ptr = malloc(size);
+    //  mm_memcpy(ptr, buf, size);
  
  
-     return ptr;
+    return ptr;
  
  }
  
@@ -607,10 +557,10 @@ size_t get_size(void *ptr){
  void* calloc(size_t nmemb, size_t size)
  {
      void* ptr;
-     size *= nmemb;
-     ptr = malloc(size);
+     size_t total_size = nmemb * size;
+     ptr = malloc(total_size);
      if (ptr) {
-         memset(ptr, 0, size);
+         memset(ptr, 0, total_size);
      }
      return ptr;
  }
