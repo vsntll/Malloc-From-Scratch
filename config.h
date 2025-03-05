@@ -96,7 +96,7 @@
  * up to this point (1 is perfect).
  */
 #define MAX_SPACE_CHECKPOINT 0.42
-#define MAX_SPACE       0.50
+#define MAX_SPACE       0.74
 
  /*
   * This constant determines the contributions of space utilization
