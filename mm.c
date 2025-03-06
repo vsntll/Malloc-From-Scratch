@@ -71,7 +71,7 @@ static size_t align(size_t x)
     return ALIGNMENT * ((x+ALIGNMENT-1)/ALIGNMENT);
 }
 
-static const size_t WSIZE = 8;
+static const size_t WSIZE = 4;
 static const size_t  DSIZE = 8;
 //static const size_t CHUNKSIZE = (1<<12);
 static char *heap_listp;
@@ -195,6 +195,25 @@ static void *coalesce(void*bp)
    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); 
    size_t size = GET_SIZE(HDRP(bp));
 
+    int index = get_list_index(size);
+    free_block_t *curr = (free_block_t *)bp;
+    free_block_t *prev = NULL;
+    free_block_t *element = segregated_free_lists[index];
+
+    while(element != NULL && element != curr){
+        prev= element;
+        element = element -> next;
+    }
+
+    if(element == curr){
+        if(prev == NULL){
+            segregated_free_lists[index]= element -> next;
+        }
+        else{
+            prev -> next = element -> next;
+        }
+    }
+
    //case 1
    if (prev_alloc && next_alloc){
        return bp;
@@ -222,6 +241,12 @@ static void *coalesce(void*bp)
        PUT(FTRP(NEXT_BLKP(bp)),PACK(size,0));
        bp=PREV_BLKP(bp);
    }
+
+   index = get_list_index(size);
+   free_block_t *cblock = (free_block_t *)bp;
+   cblock -> next = segregated_free_lists[index];
+   segregated_free_lists[index] = cblock;
+
    return bp;
 }
 
@@ -335,7 +360,7 @@ bool mm_init(void)
    //  start[3] = 0;
 
    //  return true;
-   if((heap_listp=mm_sbrk(8))==(void*)-1){
+   if((heap_listp=mm_sbrk(16))==(void*)-1){
        return false;}
    // PUT(heap_listp,0); 
    // PUT(heap_listp+(1*WSIZE),PACK(DSIZE,1));
@@ -366,8 +391,7 @@ void* malloc(size_t size)
        return NULL;
    }
 
-
-   size_t asize = align(size + 8);
+   size_t asize = align(size );
    //free_block_t *curr = head;
 
    //int iterations = 0;
@@ -390,6 +414,28 @@ void* malloc(size_t size)
            current = current->next;
        }
    }
+   
+   if (currBestFit){
+       if(prevBestFit){
+           prevBestFit->next = currBestFit->next;
+       }
+       else{
+           segregated_free_lists[get_list_index(GET_SIZE(&currBestFit->header))] = currBestFit->next;
+       }
+       split(asize, currBestFit);
+       return (char *)currBestFit + 8;
+   }
+
+
+   //extend heap & coalesce
+   size_t extend = MAX(asize, 1024);
+   char *bp = extend_heap(extend);
+   if (bp == (void *)-1) return NULL;
+   bp = coalesce(bp);
+   return bp + WSIZE;
+
+
+
 
    // while (curr != NULL && iterations < 500 ){
    //     if (asize <= GET_SIZE(&curr -> header)){
@@ -403,21 +449,6 @@ void* malloc(size_t size)
    //     iterations += 1;
    // }
 
-   if (currBestFit){
-       if(prevBestFit){
-           prevBestFit->next = currBestFit->next;
-       }
-       else{
-           segregated_free_lists[get_list_index(GET_SIZE(&currBestFit->header))] = currBestFit->next;
-       }
-       split(asize, currBestFit);
-       return (char *)currBestFit + 8;
-   }
-
-   char *bp = mem_sbrk(asize);
-   if (bp == (void *)-1) return NULL;
-   PUT(bp, PACK(asize, 1));
-   return bp + WSIZE;
 
 
 
