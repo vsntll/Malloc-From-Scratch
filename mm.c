@@ -71,7 +71,7 @@ static size_t align(size_t x)
     return ALIGNMENT * ((x+ALIGNMENT-1)/ALIGNMENT);
 }
 
-static const size_t WSIZE = 4;
+static const size_t WSIZE = 8;
 static const size_t  DSIZE = 8;
 //static const size_t CHUNKSIZE = (1<<12);
 static char *heap_listp;
@@ -188,6 +188,11 @@ int get_list_index(size_t size) {
    return 9;
 }
 
+//size of block from header
+size_t get_size(void *ptr) {
+    return GET_SIZE(HDRP(ptr));
+}
+
 
 static void *coalesce(void*bp)
 {
@@ -221,25 +226,24 @@ static void *coalesce(void*bp)
    
    //case 2
    else if(prev_alloc && !next_alloc){ 
-       size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
-       PUT(HDRP(bp),PACK(size,0));
-       PUT(FTRP(bp),PACK(size,0));
+       void *next_block = NEXT_BLKP(bp);
+       merge_blocks(bp, next_block);
    }
 
-   //case 3
+  // case 3
    else if(!prev_alloc && next_alloc){ 
-       size+=GET_SIZE(HDRP(PREV_BLKP(bp)));
-       PUT(FTRP(bp),PACK(size,0));
-       PUT(HDRP(PREV_BLKP(bp)),PACK(size,0));
-       bp=PREV_BLKP(bp);
+       void *prev_block= PREV_BLKP(bp);
+       merge_blocks(prev_block, bp);
+       bp = prev_block;
    }
 
    //case 4
    else{ 
-       size += GET_SIZE(HDRP(PREV_BLKP(bp)))+ GET_SIZE(FTRP(NEXT_BLKP(bp)));
-       PUT(HDRP(PREV_BLKP(bp)),PACK(size,0));
-       PUT(FTRP(NEXT_BLKP(bp)),PACK(size,0));
-       bp=PREV_BLKP(bp);
+       void *prev_block = PREV_BLKP(bp);
+       void *next_block = NEXT_BLKP(bp);
+       merge_blocks(prev_block, bp);
+       merge_blocks(prev_block, next_block);
+       bp = prev_block;
    }
 
    index = get_list_index(size);
@@ -251,26 +255,46 @@ static void *coalesce(void*bp)
 }
 
 // Helper function that splits a free block if excess space is 32 bytes or more, adding the remainder to the free list.
-static void split(size_t size, free_block_t *curblock) {
-   size_t free_size = GET_SIZE(&curblock->header);
+static void split(size_t size, free_block_t *currentblock) {
+   size_t free_size = GET_SIZE(&currentblock->header);
    size_t diff = free_size - size;
    if (diff >= 32) {  
-       PUT((char *)curblock, PACK(size, 1));
-       PUT((char *)curblock + size, PACK(diff, 0));
+       PUT((char *)currentblock, PACK(size, 1));
+       PUT((char *)currentblock + size, PACK(diff, 0));
 
        int index = get_list_index(diff);
-       free_block_t *next_block = (free_block_t *)((char *)curblock + size);
+       free_block_t *next_block = (free_block_t *)((char *)currentblock + size);
        next_block->next = segregated_free_lists[index];
        segregated_free_lists[index] = next_block;
-   } else {
-       PUT(curblock, PACK(free_size, 1));  
-   }
+    } else {
+        PUT(currentblock, PACK(free_size, 1));  
+    }
 }
 
-//check for corruption
+//! so like whats the differnce between this and the one above
+// the worse one is below because it sucks
+
+static void place (void *bp, size_t asize){
+   size_t csize = GET_SIZE(HDRP(bp));
+
+   if ((csize - asize) >= (2*DSIZE)){
+       PUT(HDRP(bp), PACK(asize, 1));
+       PUT(FTRP(bp), PACK(asize, 1));
+       bp = NEXT_BLKP(bp);
+       PUT(HDRP(bp), PACK(csize-asize, 0));
+       PUT(FTRP(bp), PACK(csize-asize, 0));
+   }
+   else{
+       PUT(HDRP(bp), PACK(csize, 1));
+       PUT(FTRP(bp), PACK(csize, 1));
+   }
+
+}
+
+//check for corruption  !this is kinda useless now ngl
 void validate_heap() {
-   uint64_t* curr = (uint64_t*)mm_heap_lo();
-   while (curr < (uint64_t*)mm_heap_hi()) {
+    uint64_t* curr = (uint64_t*)mm_heap_lo();
+    while (curr < (uint64_t*)mm_heap_hi()) {
        size_t block_size = *curr & ~1;
        if (block_size < ALIGNMENT || (uintptr_t)curr % ALIGNMENT != 0) {
            printf("Heap corruption detected at %p\n", (void*)curr);
@@ -307,7 +331,7 @@ static void *find_fit(size_t asize){
        
    }
    return NULL;
-}
+}   
 
 //merges in coalescing
 void merge_blocks(void *oldptr, void *next_block){
@@ -318,27 +342,6 @@ void merge_blocks(void *oldptr, void *next_block){
    PUT(FTRP(oldptr), PACK(oldsize + nextsize, 0));
 }
 
-//places allocated block & splits
-static void place (void *bp, size_t asize){
-   size_t csize = GET_SIZE(HDRP(bp));
-
-   if ((csize - asize) >= (2*DSIZE)){
-       PUT(HDRP(bp), PACK(asize, 1));
-       PUT(FTRP(bp), PACK(asize, 1));
-       bp = NEXT_BLKP(bp);
-       PUT(HDRP(bp), PACK(csize-asize, 0));
-       PUT(FTRP(bp), PACK(csize-asize, 0));
-   }
-   else{
-       PUT(HDRP(bp), PACK(csize, 1));
-       PUT(FTRP(bp), PACK(csize, 1));
-   }
-
-}
-
-size_t get_size(void *ptr){
-   return GET_SIZE(HDRP(ptr));
-}
 
 
 
