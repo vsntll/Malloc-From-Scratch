@@ -412,6 +412,21 @@ void* malloc(size_t size)
            current = current->next;
        }
    }
+   if (currBestFit){
+       if(prevBestFit){
+           prevBestFit->next = currBestFit->next;
+       }
+       else{
+           segregated_free_lists[get_list_index(GET_SIZE(&currBestFit->header))] = currBestFit->next;
+       }
+       split(asize, currBestFit);
+       return (char *)currBestFit + 8;
+   }
+
+   char *bp = mm_sbrk(asize);
+   if (bp == (void *)-1) return NULL;
+   PUT(bp, PACK(asize, 1));
+   return bp + 8;
 
    // while (curr != NULL && iterations < 500 ){
    //     if (asize <= GET_SIZE(&curr -> header)){
@@ -425,21 +440,6 @@ void* malloc(size_t size)
    //     iterations += 1;
    // }
 
-   if (currBestFit){
-       if(prevBestFit){
-           prevBestFit->next = currBestFit->next;
-       }
-       else{
-           segregated_free_lists[get_list_index(GET_SIZE(&currBestFit->header))] = currBestFit->next;
-       }
-       split(asize, currBestFit);
-       return (char *)currBestFit + 8;
-   }
-
-   char *bp = mem_sbrk(asize);
-   if (bp == (void *)-1) return NULL;
-   PUT(bp, PACK(asize, 1));
-   return bp + WSIZE;
 
 
 
