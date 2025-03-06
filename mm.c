@@ -147,7 +147,7 @@ typedef struct free_block_t{
 free_block_t *head = NULL;
 
 //array of free lists
-free_block_t *segregated_free_lists[10];
+free_block_t *segregated_free_lists[14];
 
 
 //check if block is free
@@ -156,6 +156,7 @@ bool is_free(void *ptr) {
 }
 
 // Helper function to get the list index range
+//! adding any more results in a decrease in utilization by 8 pts.
 int get_list_index(size_t size) {
    if (size <= 32) {
        return 0;
@@ -184,11 +185,24 @@ int get_list_index(size_t size) {
    else if (size <= 8192) {
        return 8;
     }
-    
-    return 9;
+   else if (size <= 16384) {
+       return 9;
+   }
+   else if (size <= 32768) {
+       return 10;
+   }
+    else if (size <= 65536) {
+         return 11;
+    }
+    else if (size <= 131072) {
+         return 12;
+    }
+    else {
+         return 13;
+    }
 }
 
-//places allocated block & splits
+//places allocated block & splits (somehow worse than split due to split being byte based)
 static void place (void *bp, size_t asize){
    size_t csize = GET_SIZE(HDRP(bp));
 
@@ -205,7 +219,7 @@ static void place (void *bp, size_t asize){
    }
 
 }
-
+//size of header calc
 size_t get_size(void *ptr){
    return GET_SIZE(HDRP(ptr));
 }
@@ -456,7 +470,7 @@ bool mm_init(void)
  
    // if(extend_heap(CHUNKSIZE/WSIZE)==NULL){
    //     return false;}
-   for(int i = 0; i < 10; i++) {
+   for(int i = 0; i < 14; i++) {
        segregated_free_lists[i] = NULL;
    }
    return true;
@@ -486,7 +500,7 @@ void* malloc(size_t size)
    free_block_t *currBestFit = NULL;
 
    // Search for the best fit in segregated lists starting from the right index based on set from above
-   for (int i = index; i < 10 && !currBestFit; i++) {
+   for (int i = index; i < 12 && !currBestFit; i++) {
        free_block_t *current = segregated_free_lists[i];
        prevBestFit = NULL;
        
@@ -511,8 +525,8 @@ void* malloc(size_t size)
        return (char *)currBestFit + 8;
    }
 
-//! somehow take this line and swap it with coalescing alongside the bp initialization
-   char *bp = extend_heap(asize);
+//! somehow take this line and swap it with coalescing alongside the bp initialization  - - no longer feels worth it or possible
+   char *bp =   mm_sbrk(asize);
    if (bp == (void *)-1) return NULL;
 //this too   
    PUT(bp, PACK(asize, 1)); 
