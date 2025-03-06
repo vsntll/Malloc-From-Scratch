@@ -70,7 +70,7 @@ static size_t align(size_t x)
 {
     return ALIGNMENT * ((x+ALIGNMENT-1)/ALIGNMENT);
 }
-
+//? i dont know why this only works if 8 , 8 but it does and anything else breaks it so we proceed as if all is good
 static const size_t WSIZE = 8;
 static const size_t  DSIZE = 8;
 //static const size_t CHUNKSIZE = (1<<12);
@@ -237,33 +237,121 @@ static void *coalesce(void*bp)
     
    //case 1
    if (prev_alloc && next_alloc){
+       index = get_list_index(size);
+       curr -> next = segregated_free_lists[index];
+       segregated_free_lists[index] = curr;
        return bp;
    }
    
    //case 2
    else if(prev_alloc && !next_alloc){ 
        void *next_block = NEXT_BLKP(bp);
-       merge_blocks(bp, next_block);
+       size += GET_SIZE(HDRP(next_block));
+
+       //remove next from free
+       index = get_list_index(GET_SIZE(HDRP(next_block)));
+       free_block_t *nextfree = (free_block_t *)next_block;
+       prev = NULL;
+       element = segregated_free_lists[index];
+
+       while(element != NULL && element != nextfree){
+           prev = element;
+           element = element -> next;
+       }
+
+       if (element == nextfree){
+            if(prev == NULL){
+                segregated_free_lists[index] = element -> next;
+            }
+            else{
+                prev -> next = element -> next;
+            }
+       }
+       PUT(HDRP(bp), PACK(size, 0));
+       PUT(FTRP(bp), PACK(size, 0));
+
+       //this makes sense but let's see if it works because base coalesce hardly does
    }
 
    //case 3
    else if(!prev_alloc && next_alloc){ 
        void *prev_block = PREV_BLKP(bp);
-       merge_blocks(prev_block, bp);
-       bp = prev_block;}
+       size += GET_SIZE(HDRP(prev_block));
 
+       //remove prev from free
+       index = get_list_index(GET_SIZE(HDRP(prev_block)));
+       free_block_t *prevfree = (free_block_t *)prev_block;
+       prev = NULL;
+       element = segregated_free_lists[index];
+
+       while(element != NULL && element != prevfree){
+           prev = element;
+           element = element -> next;
+       }
+
+       if (element == prevfree){
+           if(prev == NULL){
+               segregated_free_lists[index] = element -> next;
+           }
+           else{
+               prev -> next = element -> next;
+           }
+       }
+       PUT(HDRP(prev_block), PACK(size, 0));
+       PUT(FTRP(prev_block), PACK(size, 0));
+       bp = prev_block;
+       
+   }
    //case 4
    else{ 
        void *prev_block = PREV_BLKP(bp);
        void *next_block = NEXT_BLKP(bp);
-       merge_blocks(prev_block, bp);
-       merge_blocks(prev_block, next_block);
+       size += GET_SIZE(HDRP(prev_block)) + GET_SIZE(HDRP(next_block));
+
+       //remove prev & next from free
+       index = get_list_index(GET_SIZE(HDRP(prev_block)));
+       free_block_t *prevfree = (free_block_t *)prev_block;
+       prev = NULL;
+       element = segregated_free_lists[index];
+
+       while(element != NULL && element != prevfree){
+           prev = element;
+           element = element -> next;
+       }
+
+       if (element == prevfree){
+           if(prev == NULL){
+               segregated_free_lists[index] = element -> next;
+           }
+           else{
+               prev -> next = element -> next;
+           }
+       }
+       index = get_list_index(GET_SIZE(HDRP(next_block)));
+       free_block_t *nextfree = (free_block_t *)next_block;
+       prev = NULL;
+       element = segregated_free_lists[index];
+
+       while(element != NULL && element != nextfree){
+           prev = element;
+           element = element -> next;
+       }
+       if (element == nextfree){
+           if(prev == NULL){
+               segregated_free_lists[index] = element -> next;
+           }
+           else{
+               prev -> next = element -> next;
+           }
+       }
+       PUT(HDRP(prev_block), PACK(size, 0));
+       PUT(FTRP(prev_block), PACK(size, 0));
        bp = prev_block;
    }
    index = get_list_index(GET_SIZE(HDRP(bp)));
-   free_block_t *cblock = (free_block_t *)bp;
-   cblock->next = segregated_free_lists[index];
-   segregated_free_lists[index] = cblock;
+   curr = (free_block_t *)bp;
+   curr->next = segregated_free_lists[index];
+   segregated_free_lists[index] = curr;
 
    return bp;
 }
@@ -423,9 +511,17 @@ void* malloc(size_t size)
        return (char *)currBestFit + 8;
    }
 
+//! somehow take this line and swap it with coalescing alongside the bp initialization
    char *bp = mm_sbrk(asize);
    if (bp == (void *)-1) return NULL;
-   PUT(bp, PACK(asize, 1));
+//this too   
+   PUT(bp, PACK(asize, 1)); 
+
+
+
+
+
+
    return bp + 8;
 
    // while (curr != NULL && iterations < 500 ){
