@@ -183,97 +183,12 @@ int get_list_index(size_t size) {
    }
    else if (size <= 8192) {
        return 8;
-   }
-
-   return 9;
-}
-
-//size of block from header
-size_t get_size(void *ptr) {
-    return GET_SIZE(HDRP(ptr));
-}
-
-
-static void *coalesce(void*bp)
-{
-   size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))); 
-   size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); 
-   size_t size = GET_SIZE(HDRP(bp));
-
-    int index = get_list_index(size);
-    free_block_t *curr = (free_block_t *)bp;
-    free_block_t *prev = NULL;
-    free_block_t *element = segregated_free_lists[index];
-
-    while(element != NULL && element != curr){
-        prev= element;
-        element = element -> next;
     }
-
-    if(element == curr){
-        if(prev == NULL){
-            segregated_free_lists[index]= element -> next;
-        }
-        else{
-            prev -> next = element -> next;
-        }
-    }
-
-   //case 1
-   if (prev_alloc && next_alloc){
-       return bp;
-   }
-   
-   //case 2
-   else if(prev_alloc && !next_alloc){ 
-       void *next_block = NEXT_BLKP(bp);
-       merge_blocks(bp, next_block);
-   }
-
-  // case 3
-   else if(!prev_alloc && next_alloc){ 
-       void *prev_block= PREV_BLKP(bp);
-       merge_blocks(prev_block, bp);
-       bp = prev_block;
-   }
-
-   //case 4
-   else{ 
-       void *prev_block = PREV_BLKP(bp);
-       void *next_block = NEXT_BLKP(bp);
-       merge_blocks(prev_block, bp);
-       merge_blocks(prev_block, next_block);
-       bp = prev_block;
-   }
-
-   index = get_list_index(size);
-   free_block_t *cblock = (free_block_t *)bp;
-   cblock -> next = segregated_free_lists[index];
-   segregated_free_lists[index] = cblock;
-
-   return bp;
+    
+    return 9;
 }
 
-// Helper function that splits a free block if excess space is 32 bytes or more, adding the remainder to the free list.
-static void split(size_t size, free_block_t *currentblock) {
-   size_t free_size = GET_SIZE(&currentblock->header);
-   size_t diff = free_size - size;
-   if (diff >= 32) {  
-       PUT((char *)currentblock, PACK(size, 1));
-       PUT((char *)currentblock + size, PACK(diff, 0));
-
-       int index = get_list_index(diff);
-       free_block_t *next_block = (free_block_t *)((char *)currentblock + size);
-       next_block->next = segregated_free_lists[index];
-       segregated_free_lists[index] = next_block;
-    } else {
-        PUT(currentblock, PACK(free_size, 1));  
-    }
-}
-
-//! so like whats the differnce between this and the one above
-// the worse one is below because it sucks
-
+//places allocated block & splits
 static void place (void *bp, size_t asize){
    size_t csize = GET_SIZE(HDRP(bp));
 
@@ -291,10 +206,89 @@ static void place (void *bp, size_t asize){
 
 }
 
-//check for corruption  !this is kinda useless now ngl
+size_t get_size(void *ptr){
+   return GET_SIZE(HDRP(ptr));
+}
+
+static void *coalesce(void*bp)
+{
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))); 
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); 
+    size_t size = GET_SIZE(HDRP(bp));
+
+    int index = get_list_index(size);
+    free_block_t *curr = (free_block_t *)bp;
+    free_block_t *prev = NULL;
+    free_block_t *element = segregated_free_lists[index];
+
+    while (element != NULL && element != curr) {
+        prev = element;
+        element = element->next;
+    }
+
+    if (element == curr) {
+        if (prev == NULL) {
+            segregated_free_lists[index] = element->next;
+        } 
+        else {
+        prev->next = element->next;
+        }
+    }
+    
+   //case 1
+   if (prev_alloc && next_alloc){
+       return bp;
+   }
+   
+   //case 2
+   else if(prev_alloc && !next_alloc){ 
+       void *next_block = NEXT_BLKP(bp);
+       merge_blocks(bp, next_block);
+   }
+
+   //case 3
+   else if(!prev_alloc && next_alloc){ 
+       void *prev_block = PREV_BLKP(bp);
+       merge_blocks(prev_block, bp);
+       bp = prev_block;}
+
+   //case 4
+   else{ 
+       void *prev_block = PREV_BLKP(bp);
+       void *next_block = NEXT_BLKP(bp);
+       merge_blocks(prev_block, bp);
+       merge_blocks(prev_block, next_block);
+       bp = prev_block;
+   }
+   index = get_list_index(GET_SIZE(HDRP(bp)));
+   free_block_t *cblock = (free_block_t *)bp;
+   cblock->next = segregated_free_lists[index];
+   segregated_free_lists[index] = cblock;
+
+   return bp;
+}
+
+// Helper function that splits a free block if excess space is 32 bytes or more, adding the remainder to the free list.
+static void split(size_t size, free_block_t *curblock) {
+   size_t free_size = GET_SIZE(&curblock->header);
+   size_t diff = free_size - size;
+   if (diff >= 32) {  
+       PUT((char *)curblock, PACK(size, 1));
+       PUT((char *)curblock + size, PACK(diff, 0));
+
+       int index = get_list_index(diff);
+       free_block_t *next_block = (free_block_t *)((char *)curblock + size);
+       next_block->next = segregated_free_lists[index];
+       segregated_free_lists[index] = next_block;
+   } else {
+       PUT(curblock, PACK(free_size, 1));  
+   }
+}
+
+//check for corruption
 void validate_heap() {
-    uint64_t* curr = (uint64_t*)mm_heap_lo();
-    while (curr < (uint64_t*)mm_heap_hi()) {
+   uint64_t* curr = (uint64_t*)mm_heap_lo();
+   while (curr < (uint64_t*)mm_heap_hi()) {
        size_t block_size = *curr & ~1;
        if (block_size < ALIGNMENT || (uintptr_t)curr % ALIGNMENT != 0) {
            printf("Heap corruption detected at %p\n", (void*)curr);
@@ -331,7 +325,7 @@ static void *find_fit(size_t asize){
        
    }
    return NULL;
-}   
+}
 
 //merges in coalescing
 void merge_blocks(void *oldptr, void *next_block){
@@ -363,7 +357,7 @@ bool mm_init(void)
    //  start[3] = 0;
 
    //  return true;
-   if((heap_listp=mm_sbrk(16))==(void*)-1){
+   if((heap_listp=mm_sbrk(8))==(void*)-1){
        return false;}
    // PUT(heap_listp,0); 
    // PUT(heap_listp+(1*WSIZE),PACK(DSIZE,1));
@@ -394,7 +388,8 @@ void* malloc(size_t size)
        return NULL;
    }
 
-   size_t asize = align(size );
+
+   size_t asize = align(size + 8);
    //free_block_t *curr = head;
 
    //int iterations = 0;
@@ -402,7 +397,7 @@ void* malloc(size_t size)
    free_block_t *prevBestFit = NULL;
    free_block_t *currBestFit = NULL;
 
-   // Search for the best fit in segregated lists starting from the appropriate index
+   // Search for the best fit in segregated lists starting from the right index based on set from above
    for (int i = index; i < 10 && !currBestFit; i++) {
        free_block_t *current = segregated_free_lists[i];
        prevBestFit = NULL;
@@ -417,28 +412,6 @@ void* malloc(size_t size)
            current = current->next;
        }
    }
-   
-   if (currBestFit){
-       if(prevBestFit){
-           prevBestFit->next = currBestFit->next;
-       }
-       else{
-           segregated_free_lists[get_list_index(GET_SIZE(&currBestFit->header))] = currBestFit->next;
-       }
-       split(asize, currBestFit);
-       return (char *)currBestFit + 8;
-   }
-
-
-   //extend heap & coalesce
-   size_t extend = MAX(asize, 1024);
-   char *bp = extend_heap(extend);
-   if (bp == (void *)-1) return NULL;
-   bp = coalesce(bp);
-   return bp + WSIZE;
-
-
-
 
    // while (curr != NULL && iterations < 500 ){
    //     if (asize <= GET_SIZE(&curr -> header)){
@@ -452,6 +425,21 @@ void* malloc(size_t size)
    //     iterations += 1;
    // }
 
+   if (currBestFit){
+       if(prevBestFit){
+           prevBestFit->next = currBestFit->next;
+       }
+       else{
+           segregated_free_lists[get_list_index(GET_SIZE(&currBestFit->header))] = currBestFit->next;
+       }
+       split(asize, currBestFit);
+       return (char *)currBestFit + 8;
+   }
+
+   char *bp = mem_sbrk(asize);
+   if (bp == (void *)-1) return NULL;
+   PUT(bp, PACK(asize, 1));
+   return bp + WSIZE;
 
 
 
