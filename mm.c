@@ -391,7 +391,7 @@ void validate_heap() {
 static void *extend_heap(size_t size) {
    char *bp;
 
-   if ((void *)(bp = mem_sbrk(size)) == (void *)-1) {
+   if ((void *)(bp = mm_sbrk(size)) == (void *)-1) {
        return NULL;
    }
 
@@ -512,7 +512,7 @@ void* malloc(size_t size)
    }
 
 //! somehow take this line and swap it with coalescing alongside the bp initialization
-   char *bp = mm_sbrk(asize);
+   char *bp = extend_heap(asize);
    if (bp == (void *)-1) return NULL;
 //this too   
    PUT(bp, PACK(asize, 1)); 
