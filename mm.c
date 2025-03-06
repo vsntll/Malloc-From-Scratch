@@ -64,7 +64,7 @@
 #endif // DRIVER
 
 #define ALIGNMENT 16
-
+//! HELLO! THE FOLLOWING FUNCTIONS AND HELPERS INCLUDE CODE TAKEN FROM THE TEXTBOOK 'COMPUTER SYSTEMS'. THIS BOOK WAS USED AS A BASELINE FOR THE PACK/GET/PUT/ETC FUNCTIONS WHERE WERE STATED AS MACROS ANDT] WERE ADAPTED. THANK YOU FOR COMING TO MY TED TALK!
 // rounds up to the nearest multiple of ALIGNMENT
 static size_t align(size_t x)
 {
@@ -127,7 +127,7 @@ struct block_meta{
 };
 
 
-//function declarations
+//function declarations so that i can declare in any order i desire
 static void *extend_heap(size_t words);
 static void *find_fit(size_t size);
 static void place(void *bp, size_t asize);
@@ -136,6 +136,7 @@ size_t get_size(void *ptr);
 bool is_free(void *ptr);
 void merge_blocks(void *oldptr, void *next_block);
 
+// woohoo! this one is the most important one. used to keep track of free blocks in heap
 typedef struct free_block_t{
    size_t header;
    struct free_block_t *next;
@@ -144,8 +145,12 @@ typedef struct free_block_t{
 
 //set head pointer to first free block in free list
 free_block_t *head = NULL;
+
+//array of free lists
 free_block_t *segregated_free_lists[10];
 
+
+//check if block is free
 bool is_free(void *ptr) {
    return !GET_ALLOC(HDRP(ptr));
 }
