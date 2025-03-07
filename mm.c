@@ -4,22 +4,32 @@
  * Name: Avie Vasantlal
  * Email: adv5201@psu.edu
  *
- * How malloc works:
- * align to nearest multiple within ALIGNMENT
- * find the block that is large enough to fit the payload
- * extend the heap
- * place the block in 
+ * mm_init:
+ * initializes the heap and sets up the segregated free lists
  * 
- * How free works:
- * check if pointer is NULL
- * mark it as free by clearing the allocated bit
- * coalesce (4 cases):
- * both previous & next are allocated
- * if prevBestFit is allocated then next is free
- * if prevBestFit is free then next is allocated
- * both prevBestFit & next are free
+ * malloc:
+ * rounds up the size to the nearest multiple of 16
+ * searches the segregated free lists for a block that fits
+ * if block is found, split if there is enough remaining space
+ * if no block is found, extend the heap to allocate the new block
  * 
- * coalesced block is then added to free list 
+ * free:
+ * marks the block as free and adds it to the free list
+ * coalesces the block with adjacent free blocks (not directly using coalescing function but more of a merge)
+ * 
+ * realloc:
+ * if new size is 0, frees the block
+ * the the old pointer is NULL, allocates a new block
+ * else allocates a new block, copies the old data, and free the old block
+ * 
+ * calloc:
+ * allocates a new block of memory and sets it to 0
+ * 
+ * 
+ * 
+ * used macros and code taken from the book Computer Systems. Macros have been adapted into helper functions.
+ * 
+ * 
  * 
  * 
  *
@@ -224,6 +234,7 @@ size_t get_size(void *ptr){
    return GET_SIZE(HDRP(ptr));
 }
 
+//took the book coalesce and adapted it to use the segregated free lists but failed miserably and decided coalescing isnt worth it anymore
 static void *coalesce(void*bp)
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))); 
@@ -448,28 +459,9 @@ void merge_blocks(void *oldptr, void *next_block){
 bool mm_init(void)
 {
     // IMPLEMENT THIS
-    //  uint64_t* start = mm_sbrk(align(32));
-    //  if (start == (void *)-1) {
-   //      return false;
-   //  }
-
-   //  start[0] = 0;
-   //  start[1] = 0;
-   //  start[2] = 0;
-   //  start[3] = 0;
-
-   //  return true;
    if((heap_listp=mm_sbrk(8))==(void*)-1){
        return false;}
-   // PUT(heap_listp,0); 
-   // PUT(heap_listp+(1*WSIZE),PACK(DSIZE,1));
-   // PUT(heap_listp+(2*WSIZE),PACK(DSIZE,1));
-   // PUT(heap_listp+(3*WSIZE),PACK(0,1)); 
-   // heap_listp+=(2*WSIZE);
 
- 
-   // if(extend_heap(CHUNKSIZE/WSIZE)==NULL){
-   //     return false;}
    for(int i = 0; i < 14; i++) {
        segregated_free_lists[i] = NULL;
    }
@@ -537,42 +529,6 @@ void* malloc(size_t size)
 
 
    return bp + 8;
-
-   // while (curr != NULL && iterations < 500 ){
-   //     if (asize <= GET_SIZE(&curr -> header)){
-   //         if (currBestFit == NULL || GET_SIZE(&curr -> header) < GET_SIZE(&currBestFit -> header)){
-   //             currBestFit = curr;
-   //             prevBestFit = prevBestFit;
-   //         }
-   //     }
-   //     prevBestFit = curr;
-   //     curr = curr -> next;
-   //     iterations += 1;
-   // }
-
-
-
-
-   // if (size <= DSIZE){
-   //     asize = 2*DSIZE;
-   // }
-
-   // else{
-   //     asize = DSIZE * ((size + DSIZE + (DSIZE - 1)) / DSIZE);
-   // }
-   //     if ((bp = find_fit(asize)) != NULL){
-   //         place(bp, asize);
-   //         return bp;
-   //     }
-   //     validate_heap();
-   //     //no fit
-   //     extend = MAX(asize, CHUNKSIZE);
-   //     if (( bp = extend_heap(extend/WSIZE)) == NULL){
-   //         return NULL;
-   //     }
-   //     validate_heap();
-   //     place(bp, asize);
-   //     return bp;
 }
 
 
@@ -593,53 +549,6 @@ void free(void* ptr){
    free_block_t * free = (free_block_t *) HDRP(ptr);
    free -> next = segregated_free_lists[index];
    segregated_free_lists[index] = free;    
-
-   // free->next = head;
-
-   // head = free;
-
-   
-
-   //  if (ptr == NULL){ // null
-   //      return;
-   //  }
-
-   //  uint64_t* header = (uint64_t*)ptr - 1;
-   //      return; // already free
-   //  }
-
-   //  // Mark the block as free
-   //  size_t block_size = *header & ~1; // Clear the allocated bit
-    
-   //  // Set the footer for the freed block
-   //  uint64_t *footer = (uint64_t *)((char *)ptr + block_size - ALIGNMENT);
-    
-   //  *footer = block_size | 0;
-    //coalesce_blocks(&header, &footer, &block_size);
-
-    //  //? time to coalesce next block ---- past has always resulted in segmentation fault
-     
-    // //coalesce with the next block if it's free
-    // uint64_t *next_header = (uint64_t *)((char *)ptr + block_size);
-    // if (next_header < (uint64_t*)mm_heap_hi() && !(*next_header & 1)) {
-    //     size_t next_size = *next_header & ~1; // Clear the allocated bit
-    //     block_size += next_size + ALIGNMENT; // Add the size of the next block and header/footer overhead
-    //     *header = block_size|0;              // Update header
-    //     *footer = block_size|0;              // Update footer
-    //     //printf("Coalesced with next block: new size = %zu\n", block_size);
-    // }
-
-    // // try to coalesce with the previous block if it's free
-    // uint64_t* prev_footer = (uint64_t*)((char*)header - ALIGNMENT);
-    // if (prev_footer > (uint64_t*)mm_heap_lo() && !(*prev_footer & 1)) {
-    //     size_t prev_size = *prev_footer & ~1; // Clear the allocated bit
-    //     block_size += prev_size + ALIGNMENT; // Add the size of the previous block and header/footer overhead
-    //     //header = (uint64_t*)((char*)header - prev_size - ALIGNMENT); // ! problem child
-    //     *header = block_size | 0;                // Update header
-    //     *footer = block_size | 0;                // Update footer
-    //     //printf("Coalesced with previous block: new size = %zu\n", block_size);
-    //}
-
 }
 
 
@@ -667,16 +576,7 @@ void* realloc(void* oldptr, size_t size)
    }  
    memcpy(newptr, oldptr, copy_size);
    free(oldptr);
-   
-
-
-   //  // temp store data & copy to new block
-   //  unsigned char buf[size];
-   //  mm_memcpy(buf, oldptr, size);
-   //  void * ptr = malloc(size);
-   //  mm_memcpy(ptr, buf, size);
-
-
+ 
    return newptr;
 
 }
